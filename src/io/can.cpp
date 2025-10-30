@@ -32,25 +32,27 @@ can_io::can_io(const can_io::info_type& info)
         throw std::runtime_error("bind() failed");
 
     stream_.assign(fd);
+
+    cf_ = (::can_frame*)std::malloc(sizeof(::can_frame) + 8);
+}
+
+can_io::~can_io(){
+    std::free(cf_);
 }
 
 roboctrl::awaitable<void> can_io::task(){
     while(true){
-        co_await stream_.async_read_some(asio::buffer(buffer_),asio::use_awaitable);
-        can_frame cf = utils::from_bytes<can_frame>(buffer_);
+        size_t pkg_size = co_await stream_.async_read_some(asio::buffer(buffer_),asio::use_awaitable);
+        can_frame cf = utils::from_bytes<can_frame>(std::span{buffer_.data(),pkg_size});
 
         can_id_type id = cf.can_id;
-        size_t size= cf.can_dlc;
+        size_t can_size= cf.can_dlc;
 
-        dispatch(id,std::span<std::byte>((std::byte*)cf.data,size));
+        dispatch(id,std::span{(std::byte*)cf.data,can_size});
     }
 }
 
 roboctrl::awaitable<void> can_io::send(byte_span frame){
-    if(frame.size() != sizeof(::can_frame)){
-        co_return;
-    }
-
     co_await stream_.async_write_some(asio::buffer(frame));
 }
 
@@ -61,12 +63,9 @@ roboctrl::awaitable<void> can_io::send(can_id_type id,byte_span data){
     }
     
     const auto size = sizeof(can_frame) + data.size();
-    can_frame *cf = (can_frame*)std::malloc(size);
-    cf->can_id = id;
-    cf->can_dlc = data.size();
-    std::memcpy(cf->data,data.data(),data.size());
+    cf_->can_id = id;
+    cf_->can_dlc = data.size();
+    std::memcpy(cf_->data,data.data(),data.size());
 
-    co_await send({(std::byte*)cf,size});
-
-    std::free(cf);
+    co_await send({(std::byte*)cf_,size});
 }

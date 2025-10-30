@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string_view>
 #include <asio.hpp>
+#include <linux/can.h>
 
 #include "core/logger.hpp"
 
@@ -27,6 +28,8 @@ public:
 
     can_io(const info_type& info);
 
+    ~can_io();
+
     awaitable<void> send(byte_span data);
 
     awaitable<void> send(can_id_type id,byte_span data);
@@ -41,6 +44,7 @@ private:
     asio::posix::stream_descriptor stream_;
     info_type info_;
     std::array<std::byte,20> buffer_;
+    ::can_frame *cf_;
 };
 
 static_assert(owner<can_io>);
