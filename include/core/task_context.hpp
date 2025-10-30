@@ -1,0 +1,101 @@
+#pragma once
+
+#include <asio.hpp>
+#include <asio/awaitable.hpp>
+#include <format>
+#include <utility>
+
+#include "asio/io_context.hpp"
+#include "multiton.hpp"
+#include "utils/concepts.hpp"
+
+namespace roboctrl::core::task_context{
+
+template<typename T = void>
+using awaitable = asio::awaitable<void>;
+
+class task_context :
+ public utils::immovable_base,
+ public utils::not_copyable_base{
+    
+public:
+    using task_type = awaitable<>;
+
+    struct info_type{
+        using key_type = int;
+        using owner_type = task_context;
+
+        int key_;
+
+        int key() const{
+            return key_;
+        }
+
+        consteval inline static info_type make(){
+            return {.key_ = 0};
+        }
+
+        template<int N>
+        consteval inline static auto make() -> std::array<info_type,N>{
+            return []<std::size_t... I>(std::index_sequence<I...>) -> std::array<info_type,N>{
+                return std::array<info_type, N>{info_type{I}...};
+            }(std::make_index_sequence<N>());
+        }
+    };
+
+    inline explicit task_context(info_type _info) : info_(_info){}
+
+    inline void spawn(task_type&& task){
+        asio::co_spawn(context_,std::move(task),asio::detached);
+    }
+
+    template<typename ...Args>
+    inline void post(std::function<void(Args...)> fn,Args&&... args){
+        asio::post(context_,[fn=std::move(fn),args=std::make_tuple(std::forward<Args>(args)...)]() mutable{
+            std::apply(fn,args);
+        });
+    }
+
+    inline void run(){
+        context_.run();
+    }
+
+    inline std::string desc()const{
+        return std::format("async task context({})",info_.key_);
+    }
+
+    inline auto get_executor(){
+        return context_.get_executor();
+    }
+
+    inline auto asio_context() -> asio::io_context&{
+        return context_;
+    }
+
+    
+private:
+    asio::io_context context_;
+    info_type info_;
+};
+
+static_assert(info<task_context::info_type>);
+
+inline auto spawn(task_context& tc,task_context::task_type task){
+    tc.spawn(std::forward<task_context::task_type>(task));
+}
+
+template<typename ...Args>
+inline auto post(task_context& tc,Args&&... args)
+{
+    tc.post(std::forward<Args>(args)...);
+}
+
+
+inline void run(task_context &tc){
+    tc.run();
+}
+}
+
+namespace roboctrl{
+    using namespace core::task_context;
+}
