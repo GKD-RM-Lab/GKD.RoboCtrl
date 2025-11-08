@@ -2,6 +2,7 @@
 
 #include "device/base.hpp"
 #include <array>
+#include <span>
 
 namespace roboctrl::device{ 
     

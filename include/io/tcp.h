@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <format>
 #include <memory>
-#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -16,11 +15,11 @@
 #include "utils/callback.hpp"
 
 namespace roboctrl::io{
-class tcp_io : public bare_io_base{
+class tcp : public bare_io_base{
 public:
     struct info_type{
         using key_type = std::string_view;
-        using owner_type = tcp_io;
+        using owner_type = tcp;
 
         std::string key_;
         std::string address;
@@ -33,8 +32,8 @@ public:
         }
     };
 
-    explicit tcp_io(info_type info);
-    tcp_io(task_context& context, asio::ip::tcp::socket socket, std::string key);
+    explicit tcp(info_type info);
+    tcp(task_context& context, asio::ip::tcp::socket socket, std::string key);
 
     awaitable<void> send(byte_span data);
 
@@ -50,7 +49,7 @@ private:
     std::array<std::byte,1024> buffer_;
 };
 
-static_assert(bare_io<tcp_io>);
+static_assert(bare_io<tcp>);
 
 class tcp_server{
 public:
@@ -72,11 +71,11 @@ public:
 
     awaitable<void> task();
 
-    void on_connect(std::function<awaitable<void>(std::shared_ptr<tcp_io>)> callback){
+    void on_connect(std::function<awaitable<void>(std::shared_ptr<tcp>)> callback){
         on_connect_.add(std::move(callback));
     }
 
-    void on_connect(std::function<void(std::shared_ptr<tcp_io>)> callback){
+    void on_connect(std::function<void(std::shared_ptr<tcp>)> callback){
         on_connect_.add(std::move(callback));
     }
 
@@ -85,11 +84,12 @@ public:
     }
 
 private:
-    std::shared_ptr<tcp_io> make_connection(asio::ip::tcp::socket socket);
+    std::shared_ptr<tcp> make_connection(asio::ip::tcp::socket socket);
 
     asio::ip::tcp::acceptor acceptor_;
     info_type info_;
-    callback<std::shared_ptr<tcp_io>> on_connect_;
-    std::vector<std::shared_ptr<tcp_io>> connections_;
+    callback<std::shared_ptr<tcp>> on_connect_;
+    std::vector<std::shared_ptr<tcp>> connections_;
+    task_context& tc_;
 };
 }

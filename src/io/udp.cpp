@@ -4,7 +4,7 @@
 
 using namespace roboctrl::io;
 
-udp_io::udp_io(info_type info)
+udp::udp(info_type info)
     : bare_io_base{info.context},
     socket_{info.context.get_executor()},
     info_{info}
@@ -13,12 +13,12 @@ udp_io::udp_io(info_type info)
     socket_.connect(endpoint);
 }
 
-roboctrl::awaitable<void> udp_io::send(byte_span data)
+roboctrl::awaitable<void> udp::send(byte_span data)
 {
     co_await socket_.async_send(asio::buffer(data),asio::use_awaitable);
 }
 
-roboctrl::awaitable<void> udp_io::task()
+roboctrl::awaitable<void> udp::task()
 {
     while(true){
         auto bytes = co_await socket_.async_receive(asio::buffer(buffer_),asio::use_awaitable);

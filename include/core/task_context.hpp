@@ -1,11 +1,14 @@
 #pragma once
-
 #include <asio.hpp>
 #include <asio/awaitable.hpp>
+#include <chrono>
 #include <format>
 #include <utility>
 
+#include "asio/executor.hpp"
 #include "asio/io_context.hpp"
+#include "asio/steady_timer.hpp"
+#include "asio/use_awaitable.hpp"
 #include "multiton.hpp"
 #include "utils/concepts.hpp"
 
@@ -13,6 +16,7 @@ namespace roboctrl::core::task_context{
 
 template<typename T = void>
 using awaitable = asio::awaitable<void>;
+using duration = std::chrono::steady_clock::duration;
 
 class task_context :
  public utils::immovable_base,
@@ -49,12 +53,15 @@ public:
         asio::co_spawn(context_,std::move(task),asio::detached);
     }
 
-    template<typename ...Args>
-    inline void post(std::function<void(Args...)> fn,Args&&... args){
-        asio::post(context_,[fn=std::move(fn),args=std::make_tuple(std::forward<Args>(args)...)]() mutable{
-            std::apply(fn,args);
-        });
+    template<typename Fn, typename... Args>
+    inline void post(Fn&& fn, Args&&... args) {
+        asio::post(context_,
+            [fn = std::forward<Fn>(fn),
+            args = std::make_tuple(std::decay_t<Args>(std::forward<Args>(args))...)]() mutable {
+                std::apply(std::move(fn), std::move(args));
+            });
     }
+
 
     inline void run(){
         context_.run();
@@ -78,7 +85,7 @@ private:
     info_type info_;
 };
 
-static_assert(info<task_context::info_type>);
+static_assert(multiton_info<task_context::info_type>);
 
 inline auto spawn(task_context& tc,task_context::task_type task){
     tc.spawn(std::forward<task_context::task_type>(task));
@@ -93,6 +100,15 @@ inline auto post(task_context& tc,Args&&... args)
 
 inline void run(task_context &tc){
     tc.run();
+}
+
+inline awaitable<void> yield(){
+    co_await asio::post(asio::use_awaitable);
+}
+
+inline awaitable<void> wait_for(const duration& duration){
+    auto exector = co_await asio::this_coro::executor;
+    co_await asio::steady_timer(exector,duration).async_wait(asio::use_awaitable);
 }
 }
 

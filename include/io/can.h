@@ -7,28 +7,27 @@
 #include <asio.hpp>
 #include <linux/can.h>
 
-#include "core/logger.hpp"
+#include "core/logger.h"
 
 namespace roboctrl::io{
 
 using can_id_type = uint32_t;
 
-class can_io:public keyed_io_base<std::uint32_t>{
+class can:public keyed_io_base<std::uint32_t>,public logable<can>{
 public:
     struct info_type{
-        std::string can_name;
+        std::string can_name; // 不能使用string_view
         core::task_context::task_context& context;
 
-
         using key_type = std::string;
-        using owner_type = can_io;
+        using owner_type = can;
 
         std::string key() const{return can_name;}
     };
 
-    can_io(const info_type& info);
+    can(const info_type& info);
 
-    ~can_io();
+    ~can();
 
     awaitable<void> send(byte_span data);
 
@@ -47,7 +46,7 @@ private:
     ::can_frame *cf_;
 };
 
-static_assert(owner<can_io>);
+static_assert(owner<can>);
 
 
 

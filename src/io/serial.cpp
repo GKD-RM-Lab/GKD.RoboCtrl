@@ -6,7 +6,7 @@
 
 using namespace roboctrl::io;
 
-serial_io::serial_io(info_type info)
+serial::serial(info_type info)
     : bare_io_base{info.context},
       port_{info.context.get_executor()},
       info_{info}
@@ -19,12 +19,12 @@ serial_io::serial_io(info_type info)
     port_.set_option(asio::serial_port_base::flow_control(asio::serial_port_base::flow_control::none));
 }
 
-roboctrl::awaitable<void> serial_io::send(byte_span data)
+roboctrl::awaitable<void> serial::send(byte_span data)
 {
     co_await asio::async_write(port_, asio::buffer(data), asio::use_awaitable);
 }
 
-roboctrl::awaitable<void> serial_io::task()
+roboctrl::awaitable<void> serial::task()
 {
     while(true){
         auto bytes = co_await port_.async_read_some(asio::buffer(buffer_), asio::use_awaitable);

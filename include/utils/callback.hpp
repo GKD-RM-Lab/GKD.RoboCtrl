@@ -7,36 +7,42 @@
 #include <utility>
 #include "core/task_context.hpp"
 
-namespace roboctrl{
+namespace roboctrl {
 
-template<typename T,typename... Args>
-concept callback_fn = 
-    std::is_convertible_v<T, std::function<void(Args...)>> || 
-    std::is_convertible_v<T, std::function<awaitable<void>(Args...)>>;
+template<typename F, typename... Args>
+concept callback_fn = std::invocable<F, Args...> &&
+    (std::same_as<std::invoke_result_t<F, Args...>, void> ||
+     std::same_as<std::invoke_result_t<F, Args...>, awaitable<void>>);
 
-template<typename ...Args>
+template<typename... Args>
 class callback {
 public:
-    explicit callback(task_context& ctx) : ctx_{ctx} {}
+    callback() = default;
 
-    void operator()(const Args&... args) {
-        for (auto& fn : fns_)
-            ctx_.spawn(fn(args...));
-    }
-    void add(std::function<awaitable<void>()> fn) {
-        fns_.push_back(std::move(fn));
+    template<typename... CallArgs>
+    void operator()(task_context& ctx, CallArgs&&... args) const {
+        for (auto const& fn : fns_) {
+            ctx.spawn(fn(std::forward<CallArgs>(args)...));
+        }
     }
 
-    void add(std::function<void(Args...)> fn){
-        fns_.push_back(std::move([fn](Args&&... args) -> awaitable<void> {
-            fn(std::forward<Args>(args)...);
-            co_return;
-        }));
+    template<callback_fn<Args...> F>
+    void add(F&& f) {
+        using result_t = std::invoke_result_t<F, Args...>;
+        if constexpr (std::same_as<result_t, awaitable<void>>) {
+            fns_.push_back(std::function<awaitable<void>(Args...)>(std::forward<F>(f)));
+        } else {
+            fns_.push_back(std::function<awaitable<void>(Args...)>(
+                [fn = std::forward<F>(f)](Args... args) -> awaitable<void> {
+                    fn(args...);
+                    co_return;
+                }
+            ));
+        }
     }
 
 private:
     std::vector<std::function<awaitable<void>(Args...)>> fns_;
-    task_context& ctx_;
 };
 
-}
+} // namespace roboctrl

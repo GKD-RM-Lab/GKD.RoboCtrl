@@ -6,14 +6,14 @@
 
 #include "core/task_context.hpp"
 #include "io/base.hpp"
-#include "core/logger.hpp"
+#include "core/logger.h"
 
 namespace roboctrl::io{
-class udp_io : public bare_io_base{
+class udp : public bare_io_base{
 public:
     struct info_type{
         using key_type = std::string_view;
-        using owner_type = udp_io;
+        using owner_type = udp;
 
         std::string_view key_;
         std::string_view address;
@@ -26,7 +26,7 @@ public:
         }
     };
 
-    udp_io(info_type info);
+    udp(info_type info);
 
     awaitable<void> send(byte_span data);
 
@@ -42,5 +42,5 @@ private:
   std::array<std::byte,1024> buffer_;
 };
 
-static_assert(bare_io<udp_io>);
+static_assert(bare_io<udp>);
 }

@@ -36,20 +36,23 @@ class bare_io_base
     public utils::not_copyable_base
 {
 public:
-    inline bare_io_base(task_context& tc):callback_{tc}{}
+    inline bare_io_base(task_context& tc):tc_{tc}{}
 
     inline void dispatch(byte_span bytes){
-        callback_(make_shared_from(bytes));
+
+        callback_(tc_,make_shared_from(bytes));
     }
 
     
-    inline void on_data(callback_fn<data_ptr> auto fn){
-        callback_.add(fn);
+    inline void on_data(callback_fn<byte_span> auto fn){
+        callback_.add([fn](data_ptr data) -> auto{
+            return fn(std::span{data->data(),data->size()});
+        });
     }
 
     template<roboctrl::utils::package T>
     inline void on_data(callback_fn<T> auto fn){
-        callback_.add([fn](byte_span bytes){
+        on_data([fn](byte_span bytes) -> auto{
             return fn(utils::from_bytes<T>(bytes));
         });
     }
@@ -61,6 +64,7 @@ public:
 
 private:
     callback<data_ptr> callback_;
+    task_context &tc_;
 };
 
 template<typename TK>
@@ -74,14 +78,11 @@ public:
     inline void dispatch(const TK& key,byte_span data){
         auto pd = make_shared_from(data);
         if(callbacks_.contains(key)){
-            callbacks_.at(key)(pd);
+            callbacks_.at(key)(tc_,pd);
         }
     }
 
     void on_data(const TK& key,callback_fn<data_ptr> auto fn){
-        if(!callbacks_.contains(key))
-            callbacks_.emplace(key,callback<data_ptr>{tc_});
-
         callbacks_[key].add(fn);
     }
 

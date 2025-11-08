@@ -33,19 +33,15 @@ RUN update-alternatives --install /usr/bin/llvm-strip llvm-strip /usr/lib/llvm-2
 RUN update-alternatives --install /usr/bin/llvm-link llvm-link /usr/lib/llvm-21/bin/llvm-link 210
 RUN update-alternatives --install /usr/bin/llvm-config llvm-config /usr/lib/llvm-21/bin/llvm-config 210
 
-
 # 创建用户
 ARG USERNAME=gkd
-ARG USER_UID=1000
-ARG USER_GID=$USER_UID
-RUN adduser --disabled-password --gecos "" --uid $USER_UID $USERNAME && \
+RUN adduser --disabled-password --gecos "" $USERNAME && \
     usermod -aG sudo $USERNAME
 
 USER $USERNAME
 WORKDIR /home/$USERNAME
 ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 
-# 安装 xmake
 RUN bash <(curl -fsSL https://xmake.io/shget.text)
 
 # 安装 oh-my-zsh
@@ -54,4 +50,5 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
     sed -i 's/plugins=(git)/plugins=(git sudo docker)/' /home/${USERNAME}/.zshrc
 
 ENV SHELL=/usr/bin/zsh
+
 CMD ["zsh"]

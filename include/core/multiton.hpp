@@ -3,20 +3,27 @@
 #include <concepts>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
+#include <memory>
 #include <mutex>
 #include <utility>
 
 #include "utils/concepts.hpp"
+#include "utils/singleton.hpp"
+#include "core/logger.h"
 
 namespace roboctrl{
 
 template<typename T>
-concept info = requires(T info){
+concept multiton_info = requires(T info){
     typename T::key_type;
     typename T::owner_type;
     {info.key()} -> std::same_as<typename T::key_type>;
 };
+
+template<typename T>
+concept info = multiton_info<T> or utils::singleton_info<T>;
 
 template<typename T>
 concept owner = requires(T owner){
@@ -25,13 +32,13 @@ concept owner = requires(T owner){
     {T(std::declval<typename T::info_type>())};
 };
 
-template<info T>
+template<multiton_info T>
 using key_type_t = typename T::key_type;
 
-template<info T>
+template<multiton_info T>
 using owner_type_t = typename T::owner_type;
 
-namespace multition{
+namespace multiton{
 
 namespace details{
 
@@ -56,18 +63,25 @@ struct multiton_impl final :
     }
 
     [[nodiscard]]
+    static bool contains(const key_type& key){
+        return instances.contains(key);
+    }
+
+    [[nodiscard]]
     static auto get(const key_type& key) -> owner_type& {
         std::lock_guard<std::mutex> lock { mutex_ };
         auto it = instances.find(key);
         if (it != instances.end()) {
             return *it->second;
         }
+
+        LOG_ERROR("Multiton instance not found for key {}",key);
         
-        throw std::runtime_error("uninitialized multition"); //TODO:add detailed desc.
+        throw std::runtime_error("uninitialized multiton"); //TODO:add detailed desc.
     };
 };
 
-template<info info_type>
+template<multiton_info info_type>
 using impl_t = multiton_impl<owner_type_t<info_type>>;
 
 template <typename owner_type>
@@ -80,22 +94,49 @@ std::unordered_map<
 > multiton_impl<owner_type>::instances {};
 }
 
-template<info info_type>
-inline auto init(const info_type& info) -> void{
-    details::impl_t<info_type>::init(info);
-}
 
 template<owner owner_type>
+[[nodiscard]]
 inline auto get(const typename details::multiton_impl<owner_type>::key_type& key) -> owner_type&{
     return details::multiton_impl<owner_type>::get(key);
 }
 
+template<typename T>
+    requires(!owner<T> && utils::singleton<T>)
+inline auto get() -> T&{
+    return T::instance();
+}
+
+template<info info_type>
+inline auto init(const info_type& info) -> void{
+    if constexpr (multiton_info<info_type>)
+        details::impl_t<info_type>::init(info);
+    else get<info_type::owner_type>().init(info);
+}
+
+template<multiton_info... info_types>
+inline auto init(const info_types&... infos) -> void{
+    (init(infos), ...);
+}
+
+template<multiton_info info_type>
+[[nodiscard]]
+inline auto get(const info_type& info) -> owner_type_t<info_type>&{
+    using owner_type = owner_type_t<info_type>;
+    auto key = info.key();
+    if(!details::multiton_impl<owner_type>::contains(key))
+        details::multiton_impl<owner_type>::init(info);
+
+    return details::multiton_impl<owner_type>::get(key);
+}
+
 template<owner T>
-inline auto desc(T owner) -> std::string{
+[[nodiscard]]
+inline auto desc(const T& owner) -> std::string{
     return owner.desc();
 }
 
 }
 
-using namespace multition;
+using namespace multiton;
 }

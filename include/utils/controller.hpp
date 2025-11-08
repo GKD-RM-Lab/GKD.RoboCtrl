@@ -2,6 +2,8 @@
 
 #include <utility>
 #include <functional>
+#include "utils.hpp"
+
 namespace roboctrl::utils{
 
 template<typename T>
@@ -45,10 +47,6 @@ struct control_chain {
     }
 };
 
-struct pid{
-    float kp = 0;
-    float ki = 0;
-    float kd = 0;
-};
+
 
 }

@@ -8,17 +8,18 @@
 
 #include "utils/singleton.hpp"
 #include "core/multiton.hpp"
+#include "utils/concepts.hpp"
 
 namespace roboctrl{
 
 enum class log_level { Debug = 0, Info, Warn, Error };
 
-class logger: public utils::singleton<logger> {
+class logger: public utils::singleton_base<logger> {
 public:
-    void set_level(log_level level);
-    log_level level() const;
+    static void set_level(log_level level);
+    static log_level level();
 
-    friend class singleton<logger>;
+    friend class singleton_base<logger>;
 
     template <typename... Args>
     void log(log_level level,
@@ -30,6 +31,11 @@ public:
         }
         const auto message = std::format(fmt, std::forward<Args>(args)...);
         log_impl(level, role, message);
+    }
+
+    template <typename... Args>
+    void log_debug(std::format_string<Args...> fmt, Args &&...args) {
+        log(log_level::Debug, "", fmt, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
@@ -60,19 +66,32 @@ private:
 };
 
 #define LOG_LOGGER_CALL(level, role, fmt, ...)                                                   \
-    logger::instance().log(level, role, fmt __VA_OPT__(, ) __VA_ARGS__)
+    ::roboctrl::logger::instance().log(level, role, fmt __VA_OPT__(, ) __VA_ARGS__)
 
-#define LOG_DEBUG(role, fmt, ...) LOG_LOGGER_CALL(log_level::Debug, role, fmt __VA_OPT__(, ) __VA_ARGS__)
-#define LOG_INFO(role, fmt, ...) LOG_LOGGER_CALL(log_level::Info, role, fmt __VA_OPT__(, ) __VA_ARGS__)
-#define LOG_WARN(role, fmt, ...) LOG_LOGGER_CALL(log_level::Warn, role, fmt __VA_OPT__(, ) __VA_ARGS__)
-#define LOG_ERROR(role, fmt, ...) LOG_LOGGER_CALL(log_level::Error, role, fmt __VA_OPT__(, ) __VA_ARGS__)
+#define GET_ROLE (std::string(__FILE__) + ":" + std::to_string(__LINE__) + ":" + __FUNCTION__)
 
-template <owner T>
-class logable {
+#define LOG_DEBUG(fmt, ...) LOG_LOGGER_CALL(::roboctrl::log_level::Debug, GET_ROLE, fmt __VA_OPT__(, ) __VA_ARGS__)
+#define LOG_INFO(fmt, ...) LOG_LOGGER_CALL(::roboctrl::log_level::Info, GET_ROLE, fmt __VA_OPT__(, ) __VA_ARGS__)
+#define LOG_WARN(fmt, ...) LOG_LOGGER_CALL(::roboctrl::log_level::Warn, GET_ROLE, fmt __VA_OPT__(, ) __VA_ARGS__)
+#define LOG_ERROR(fmt, ...) LOG_LOGGER_CALL(::roboctrl::log_level::Error, GET_ROLE, fmt __VA_OPT__(, ) __VA_ARGS__)
+
+template <typename T>
+concept descable = requires (const T& t) {
+    { t.desc() } -> std::same_as<std::string>;
+};
+
+template <typename T>
+class logable{
 protected:
     template <typename... Args>
-    void log(log_level level, std::format_string<Args...> fmt, Args &&...args) const {
+    void log(log_level level, std::format_string<Args...> fmt, Args &&...args) const
+     requires descable<T>{
         logger::instance().log(level, static_cast<const T*>(this)->desc(), fmt, std::forward<Args>(args)...);
+    }
+
+    template <typename... Args>
+    void log_debug(std::format_string<Args...> fmt, Args &&...args) const {
+        log(log_level::Debug, fmt, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
