@@ -1,12 +1,12 @@
 #include "io/udp.h"
-#include "core/task_context.hpp"
+#include "core/async.hpp"
 #include "io/base.hpp"
 
 using namespace roboctrl::io;
 
 udp::udp(info_type info)
-    : bare_io_base{info.context},
-    socket_{info.context.get_executor()},
+    : bare_io_base{},
+    socket_{roboctrl::executor()},
     info_{info}
 {
     auto endpoint = asio::ip::udp::endpoint(asio::ip::make_address(info.address),info.port);

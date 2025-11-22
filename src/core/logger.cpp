@@ -70,26 +70,6 @@ void roboctrl::logger::log_impl(log_level level, std::string_view role, std::str
                           level_to_string(level), role_view, message,_reset_color);
 }
 
-void roboctrl::logger::progress(double ratio, std::size_t completed, std::size_t total) {
-    std::scoped_lock lock(_mutex);
-
-    if (total == 0) {
-        std::cout << "\rProgress: 0.00% (0/0)" << std::flush;
-        return;
-    }
-
-    ratio = std::clamp(ratio, 0.0, 1.0);
-    const double percent = ratio * 100.0;
-    std::cout << '\r'
-              << std::format("Progress: {:6.2f}% ({}/{})",
-                             percent, completed, total)
-              << std::flush;
-
-    if (completed >= total) {
-        std::cout << '\n';
-    }
-}
-
 std::string_view roboctrl::logger::level_to_string(log_level level) {
     switch (level) {
     case log_level::Debug:

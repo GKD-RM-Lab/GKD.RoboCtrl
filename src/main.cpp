@@ -1,23 +1,43 @@
-#include "asio/steady_timer.hpp"
+#include "config/config.hpp"
 #include "core/logger.h"
-#include "core/task_context.hpp"
+#include "core/async.hpp"
 #include <cxxopts.hpp>
-#include "io/can.h"
-#include "io/serial.h"
-#include <iostream>
-#include "ctrl/robot.h"
+#include <print>
+#include <stdexcept>
+
 using namespace std::chrono_literals;
+using namespace roboctrl;
+using namespace roboctrl::log;
 
-bool init(){
+#define check_init(conf)        \
+    if(!roboctrl::init(conf))   \
+        return false
 
+static bool init(){
+    try{
+        check_init(config::cans);
+        check_init(config::serials);
+        check_init(config::dji_motors);
+        check_init(config::control_pad);
+        check_init(config::imu);
+        check_init(config::robot);
+    }
+    catch(std::runtime_error e){
+        std::println("exception : {}",e.what());
+        return false;
+    }
+
+    return true;
 }
+
+#undef check_init
 
 int main(int argc,char** argv){
 
 #ifdef DEBUG
     roboctrl::logger::set_level(roboctrl::log_level::Debug);
 #else
-    roboctrl::logger::set_level(roboctrl::log_level::Info);
+    logger::set_level(log::Info);
 #endif
 
     cxxopts::Options options("roboctrl", "A robot controller");
@@ -34,33 +54,25 @@ int main(int argc,char** argv){
 
     if(result.count("log-level")){
         if(result["log-level"].as<std::string>() == "debug")
-            roboctrl::logger::set_level(roboctrl::log_level::Debug);
+            logger::set_level(log::Debug);
         else if(result["log-level"].as<std::string>() == "info")
-            roboctrl::logger::set_level(roboctrl::log_level::Info);
+            logger::set_level(log::Info);
         else if(result["log-level"].as<std::string>() == "warn")
-            roboctrl::logger::set_level(roboctrl::log_level::Warn);
+            logger::set_level(log::Warn);
         else if(result["log-level"].as<std::string>() == "error")
-            roboctrl::logger::set_level(roboctrl::log_level::Error);
+            logger::set_level(log::Error);
         else{
             std::print("Invalid log level\n");
             return 1;
         }
     }
 
-    roboctrl::init(
-        roboctrl::task_context::info_type::make()
-    );
+    if(!::init()){
+        std::println("Initiation failed");
+        return -1;
+    }
 
-    auto& tc = roboctrl::get<roboctrl::task_context>(0);
+    LOG_INFO("Initiation finished.");
 
-
-    tc.spawn([&tc]() -> roboctrl::awaitable<void> {
-        int i = 0;
-        while(true){
-            LOG_INFO("test : {}",i++);
-            co_await roboctrl::wait_for(1s);
-        }
-    }());
-
-    tc.run();
+    async::run();
 }

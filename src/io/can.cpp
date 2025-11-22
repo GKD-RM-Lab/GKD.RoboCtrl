@@ -1,6 +1,6 @@
 #include "io/can.h"
 #include "asio/use_awaitable.hpp"
-#include "core/task_context.hpp"
+#include "core/async.hpp"
 #include "io/base.hpp"
 #include "linux/can.h"
 #include "utils/utils.hpp"
@@ -39,15 +39,16 @@ struct std::formatter<can_frame> : std::formatter<std::string> {
 
 can::can(const can::info_type& info)
     :info_{info},
-    keyed_io_base{info.context},
-    stream_{info.context.asio_context()}
+    keyed_io_base{},
+    stream_{roboctrl::io_context()},
+    can_name_{info.can_name.data(),info.can_name.length()}
 {
     int fd = ::socket(PF_CAN,SOCK_RAW,CAN_RAW);
     if(fd < 0)
         throw std::runtime_error("socket() failed");
 
     struct ifreq ifr{};
-    std::strncpy(ifr.ifr_name, info.can_name.c_str(), IFNAMSIZ);
+    std::strncpy(ifr.ifr_name, can_name_.c_str(), IFNAMSIZ);
     if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0)
         throw std::runtime_error("ioctl(SIOCGIFINDEX) failed");
 

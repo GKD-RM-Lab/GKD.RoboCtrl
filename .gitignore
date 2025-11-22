@@ -7,3 +7,5 @@ compile_commands.json
 .DS_Store
 .VSCodeCounter
 config.json
+
+doc/

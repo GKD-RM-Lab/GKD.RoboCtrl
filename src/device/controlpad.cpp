@@ -1,5 +1,5 @@
 #include "device/controlpad.h"
-#include "core/task_context.hpp"
+#include "core/async.hpp"
 #include "device/base.hpp"
 #include "io/serial.h"
 
@@ -27,7 +27,7 @@ control_pad::control_pad(const control_pad::info_type& info)
     device_base{0ms}
 {
     auto& serial = roboctrl::get<io::serial>(info.serial_name);
-    serial.on_data<_controlpad_recive_pkg>([&](const _controlpad_recive_pkg& pkg)->roboctrl::awaitable<void>{
+    serial.on_data([&](const _controlpad_recive_pkg& pkg)->roboctrl::awaitable<void>{
         log_info("{}-{}-{}-{}-{}", pkg.ch0,pkg.ch1,pkg.ch2,pkg.ch3,pkg.ch4);
         co_return;
     });

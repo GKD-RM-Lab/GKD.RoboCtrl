@@ -1,5 +1,5 @@
 #include "ctrl/chassis.h"
-#include "core/task_context.hpp"
+#include "core/async.hpp"
 #include "ctrl/gimbal.h"
 #include "device/motor/base.hpp"
 #include "device/motor/dji.h"
@@ -14,6 +14,12 @@ roboctrl::awaitable<void> chassis::task()
         co_await speed_decomposition();
         co_await roboctrl::wait_for(1ms);
     }
+}
+
+bool chassis::init(const chassis::info_type& info){
+    roboctrl::spawn(task());
+
+    return false;
 }
 
 roboctrl::awaitable<void> chassis::speed_decomposition(){

@@ -33,6 +33,16 @@ RUN update-alternatives --install /usr/bin/llvm-strip llvm-strip /usr/lib/llvm-2
 RUN update-alternatives --install /usr/bin/llvm-link llvm-link /usr/lib/llvm-21/bin/llvm-link 210
 RUN update-alternatives --install /usr/bin/llvm-config llvm-config /usr/lib/llvm-21/bin/llvm-config 210
 
+RUN mkdir -p /etc/clang && \
+    echo "--stdlib=libc++"                          >  /etc/clang/default.cfg && \
+    echo "-nostdinc++"                              >> /etc/clang/default.cfg && \
+    echo "-nostdlib++"                              >> /etc/clang/default.cfg && \
+    echo "-I/usr/lib/llvm-21/include/c++/v1"        >> /etc/clang/default.cfg && \
+    echo "-L/usr/lib/llvm-21/lib"                   >> /etc/clang/default.cfg && \
+    echo "-lc++"                                     >> /etc/clang/default.cfg && \
+    echo "-lc++abi"                                  >> /etc/clang/default.cfg
+
+
 # 创建用户
 ARG USERNAME=gkd
 RUN adduser --disabled-password --gecos "" $USERNAME && \

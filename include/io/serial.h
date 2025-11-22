@@ -1,3 +1,8 @@
+/**
+ * @file serial.h
+ * @brief 串口裸 IO 封装。
+ * @details 针对 POSIX 平台的串口封装，提供异步读写接口。
+ */
 #pragma once
 
 #include <array>
@@ -7,12 +12,19 @@
 #include <string_view>
 #include <utility>
 
-#include "core/task_context.hpp"
+#include "core/async.hpp"
 #include "io/base.hpp"
 
 namespace roboctrl::io{
+
+/**
+ * @brief 串口设备对象。
+ */
 class serial : public bare_io_base{
 public:
+    /**
+     * @brief 串口初始化参数。
+     */
     struct info_type{
         using key_type = std::string_view;
         using owner_type = serial;
@@ -21,17 +33,24 @@ public:
         std::string_view device;
         unsigned int baud_rate;
 
-        task_context& context;
-
         std::string_view key()const{
             return name;
         }
     };
 
+    /**
+     * @brief 打开并配置串口。
+     */
     explicit serial(info_type info);
 
+    /**
+     * @brief 发送字节数据。
+     */
     awaitable<void> send(byte_span data);
 
+    /**
+     * @brief 接收循环任务。
+     */
     awaitable<void> task();
 
     inline std::string desc()const{

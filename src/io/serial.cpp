@@ -1,4 +1,5 @@
 #include "io/serial.h"
+#include "core/async.hpp"
 #include "io/base.hpp"
 
 #include <memory>
@@ -7,8 +8,8 @@
 using namespace roboctrl::io;
 
 serial::serial(info_type info)
-    : bare_io_base{info.context},
-      port_{info.context.get_executor()},
+    : bare_io_base{},
+      port_{roboctrl::io_context()},
       info_{info}
 {
     port_.open(std::string(info.device));

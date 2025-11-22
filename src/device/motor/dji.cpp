@@ -1,15 +1,14 @@
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <sys/types.h>
+
 #include "device/motor/dji.h"
-#include "core/task_context.hpp"
-#include "device/base.hpp"
+#include "core/async.hpp"
 #include "device/motor/base.hpp"
 #include "io/base.hpp"
 #include "io/can.h"
 #include "utils/utils.hpp"
-#include <chrono>
-#include <cstddef>
-#include <cstdint>
-#include <stdexcept>
-#include <sys/types.h>
 
 using namespace std::chrono_literals;
 using namespace roboctrl::device;
@@ -118,15 +117,16 @@ dji_motor::dji_motor(dji_motor::info_type info)
             break;
     }
 
-    can.on_data<_dji_upload_pkg>(fallback_canid,[this](const _dji_upload_pkg& pkg) -> void{
-        this->angle_ = _ecd_8192_to_rad * static_cast<float>(utils::make_u16(pkg.angle_h, pkg.angle_l));
-        this->angle_speed_ = _rpm_to_rad_s * static_cast<float>(utils::make_u16(pkg.speed_h, pkg.speed_l));
-        this->torque_ = utils::make_u16(pkg.current_h, pkg.speed_l);
+    can.on_data(fallback_canid,[this](const _dji_upload_pkg& pkg) -> void{
+        angle_ = _ecd_8192_to_rad * static_cast<float>(utils::make_u16(pkg.angle_h, pkg.angle_l));
+        angle_speed_ = _rpm_to_rad_s * static_cast<float>(utils::make_i16(pkg.speed_h, pkg.speed_l));
+        torque_ = utils::make_i16(pkg.current_h, pkg.speed_l);
 
-        this->pid_.update(this->angle_speed_);
+        pid_.update(this->angle_speed_);
+        current_ = pid_.state();
 
-        this->log_debug("angle:{}, speed:{}, torque:{}",this->angle_,this->angle_speed_,this->torque_);
-        this->tick();
+        log_debug("angle:{}, speed:{}, torque:{}",this->angle_,this->angle_speed_,this->torque_);
+        tick();
     });
 
     group.register_motor(this);
@@ -134,5 +134,7 @@ dji_motor::dji_motor(dji_motor::info_type info)
 
 roboctrl::awaitable<void> dji_motor::set(int16_t speed){ 
     pid_.set_target(speed);
+    pid_.update(this->angle_speed_);
+
     co_return;
 }

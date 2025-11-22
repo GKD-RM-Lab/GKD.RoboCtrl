@@ -1,4 +1,5 @@
 #include "io/tcp.h"
+#include "core/async.hpp"
 #include "io/base.hpp"
 
 #include <format>
@@ -7,8 +8,8 @@
 using namespace roboctrl::io;
 
 tcp::tcp(info_type info)
-    : bare_io_base{info.context},
-      socket_{info.context.get_executor()},
+    : bare_io_base{},
+      socket_{roboctrl::executor()},
       info_{std::move(info)}
 {
     auto endpoint = asio::ip::tcp::endpoint(
@@ -18,10 +19,10 @@ tcp::tcp(info_type info)
     socket_.connect(endpoint);
 }
 
-tcp::tcp(task_context& context, asio::ip::tcp::socket socket, std::string key)
-    : bare_io_base{context},
+tcp::tcp(asio::ip::tcp::socket socket, std::string key)
+    : bare_io_base{},
       socket_{std::move(socket)},
-      info_{.key_ = std::move(key), .address = std::string{}, .port = 0, .context = context}
+      info_{.name = std::move(key), .address = std::string{}, .port = 0}
 {
     auto remote = socket_.remote_endpoint();
     info_.address = remote.address().to_string();
@@ -42,9 +43,8 @@ roboctrl::awaitable<void> tcp::task()
 }
 
 tcp_server::tcp_server(info_type info)
-    : acceptor_{info.context.get_executor()},
-      info_{std::move(info)},
-      tc_{info.context}
+    : acceptor_{roboctrl::get<task_context>().get_executor()},
+      info_{std::move(info)}
 {
     auto endpoint = asio::ip::tcp::endpoint(
         asio::ip::make_address(info_.address),
@@ -64,14 +64,14 @@ roboctrl::awaitable<void> tcp_server::task()
         co_await acceptor_.async_accept(socket, asio::use_awaitable);
         auto connection = make_connection(std::move(socket));
         connections_.push_back(connection);
-        info_.context.spawn(connection->task());
-        on_connect_(tc_,connection);
+        roboctrl::spawn(connection->task());
+        on_connect_(connection);
     }
 }
 
 std::shared_ptr<tcp> tcp_server::make_connection(asio::ip::tcp::socket socket)
 {
     auto remote = socket.remote_endpoint();
-    auto key = std::format("{}:{}:{}:{}", info_.key_, remote.address().to_string(), remote.port(), connections_.size());
-    return std::make_shared<tcp>(info_.context, std::move(socket), std::move(key));
+    auto key = std::format("{}:{}:{}:{}", info_.name, remote.address().to_string(), remote.port(), connections_.size());
+    return std::make_shared<tcp>(std::move(socket), std::move(key));
 }

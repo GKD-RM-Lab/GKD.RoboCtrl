@@ -1,0 +1,22 @@
+/**
+* @mainpage
+*
+* @section intro_sec 简介
+* 这是GKD电控代码的文档。电控的核心逻辑包括三大板块：底盘，云台和发射器；除此之外，电控代码还包含各个电机的控制逻辑、IO等等。
+* @section compile_sec 编译说明
+* 电控代码使用 xmake 进行编译，请自行安装xmake。安装完成后，进入代码目录，执行下面的命令进行编译：
+* 
+* ```shell
+* xmake build
+* ```
+*
+* 然后使用下面的命令运行：
+* 
+* ```shell
+* xmake run
+* ```
+* @section module_sec 模块
+* 你可以从下面的页面入手电控代码：
+* - 多例模块 : @ref roboctrl::multiton
+* - 日志模块 : @ref roboctrl::logger
+*/
