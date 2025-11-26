@@ -263,6 +263,11 @@ inline auto desc(const descable auto& owner) -> std::string{
     return owner.desc();
 }
 
+template<owner owner_type>
+auto instances(){
+    return details::multiton_impl<owner_type>::instances;
+}
+
 }
 
 using namespace multiton;

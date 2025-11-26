@@ -11,6 +11,7 @@ bool shoot::init(const shoot::info_type& info)
 {
     info_ = info;
     friction_ramp_ = utils::ramp_f{info_.friction_params};
+    log_info("Shoot initiated");
 
     roboctrl::spawn(task());
     

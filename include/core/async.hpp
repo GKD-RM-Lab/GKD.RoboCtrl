@@ -39,7 +39,7 @@ namespace roboctrl::async{
  * @tparam T 返回值类型
  */
 template<typename T = void>
-using awaitable = asio::awaitable<void>;
+using awaitable = asio::awaitable<T>;
 
 using duration = std::chrono::steady_clock::duration;
 
@@ -58,7 +58,7 @@ public:
         using owner_type = task_context;
     };
 
-    inline explicit task_context() {}
+    explicit task_context();
 
     /**
      * @brief 添加一个协程任务到上下文中执行。
@@ -75,9 +75,7 @@ public:
      * }());
      * ```
      */
-    inline void spawn(task_type&& task){
-        asio::co_spawn(context_,std::move(task),asio::detached);
-    }
+    void spawn(task_type&& task);
 
     /**
      * @brief 添加一个任务到上下文中执行。
@@ -106,18 +104,12 @@ public:
     /**
      * @brief 开始运行任务上下文。
      */
-    inline void run(){
-        log_info("Start running task context");
-        context_.run();
-    }
+    void run();
 
-    inline void stop(){
-        log_info("Stop running task context");
-        context_.stop();
-    }
+    void stop();
 
     /// @brief 初始化 task_context
-    inline bool init(info_type _info){return true;}
+    bool init(info_type _info);
 
     /// @brief task_context的描述
     inline std::string desc()const{
@@ -156,7 +148,7 @@ static_assert(utils::singleton<task_context>);
  * roboctrl::spawn([]() -> roboctrl::awaitable<void>{})
  * ```
  */
-inline auto spawn(task_context::task_type task){
+inline auto spawn(task_context::task_type&& task){
     roboctrl::get<task_context>().spawn(std::forward<task_context::task_type>(task));
 }
 
@@ -208,8 +200,9 @@ inline awaitable<void> yield(){
  * ```
  */
 inline awaitable<void> wait_for(const duration& duration){
-    auto exector = roboctrl::get<task_context>().get_executor();
-    co_await asio::steady_timer(exector,duration).async_wait(asio::use_awaitable);
+    auto ex = roboctrl::get<task_context>().get_executor();
+    asio::steady_timer timer(ex, duration);
+    co_await timer.async_wait(asio::use_awaitable);
 }
 
 /**
@@ -230,7 +223,6 @@ inline void stop(){
     roboctrl::get<task_context>().stop();
 }
 }
-
 namespace roboctrl{
     using namespace async;
 }

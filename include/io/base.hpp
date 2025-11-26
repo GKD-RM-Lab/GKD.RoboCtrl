@@ -124,7 +124,8 @@ public:
     /**
      * @brief 注册指定 key 的回调。
      */
-    void on_data(const TK& key,callback_fn<byte_span> auto fn){
+    void on_data(const TK& key,callback_fn<byte_span> auto fn,size_t size = 0){
+        sizes_[key] = size;
         callbacks_[key].add([fn](data_ptr data) mutable -> auto{
             return fn(std::span{data->data(),data->size()});
         });
@@ -142,7 +143,7 @@ public:
         
         on_data(key,[fn = std::forward<Fn>(fn)](byte_span bytes) mutable {
             return fn(utils::from_bytes<std::remove_cvref_t<Arg>>(bytes));
-        });
+        },sizeof(Arg));
     }
 protected:
     /**
@@ -155,8 +156,13 @@ protected:
         }
     }
 
+    inline size_t package_size(const TK& key){
+        return sizes_[key];
+    }
+
 private:
     std::map<TK,callback<data_ptr>> callbacks_;
+    std::map<TK,size_t> sizes_;
 };
 
 /**

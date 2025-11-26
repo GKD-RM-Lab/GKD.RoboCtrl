@@ -6,6 +6,7 @@
 #pragma once
 
 #include <utility>
+#include <functional>
 
 namespace roboctrl::utils{
 

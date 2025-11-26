@@ -42,6 +42,8 @@ protected:
         utils::now() - (offline_timeout_ == std::chrono::nanoseconds::max() ? 0ns : offline_timeout_)
     }; ///< 上次心跳时间
 
+    bool terminated_ = false;
+
 public:
     device_base(const std::chrono::nanoseconds offline_timeout);
 

@@ -132,6 +132,8 @@ public:
         log(log_level::Error, "", fmt, std::forward<Args>(args)...);
     }
 
+    static void set_filter(const std::string filter);
+
 private:
     logger() = default;
 
@@ -140,6 +142,7 @@ private:
 
     mutable std::mutex _mutex;
     std::atomic<log_level> _level{log_level::Info};
+    std::string filter_;
 };
 
 #define LOG_LOGGER_CALL(level, role, fmt, ...)                                                   \

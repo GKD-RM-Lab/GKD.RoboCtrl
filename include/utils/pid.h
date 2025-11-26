@@ -45,39 +45,50 @@ struct pid_base {
 
     pid_base(const params_type& params)
         : kp(params.kp), ki(params.ki), kd(params.kd),
-        max_out(params.max_out), max_iout(params.max_iout) {}
+          max_out(params.max_out), max_iout(params.max_iout) {}
+
     /**
      * @brief 设置期望目标。
      */
     void set_target(T target) { target_ = target; }
 
+    inline T target() const { return target_; }
+
     /**
      * @brief 根据当前值更新 PID 输出。
+     * @details
+     * 与传统 RM 风格 PID（error[0]/error[1] 差分）保持兼容：
+     * - 误差缓存顺序：先 old 再 new
+     * - 积分项：I += ki * error
+     * - 微分项：D = kd * (error_curr - error_prev)
+     * - 限幅顺序：先 Iout，再输出
      */
     void update(T current) {
-        auto error = error_measurer(current, target_);
+        T error_prev = last_error_;
+        T error_curr = error_measurer(current, target_);
+        last_error_ = error_curr;
 
-        fp32 pout = kp * error;
+        T pout = kp * error_curr;
 
-        integral_ += ki * error;
+        integral_ += ki * error_curr;
         integral_ = std::clamp(integral_, -max_iout, max_iout);
 
-        fp32 derivative = kd * (error - last_error_);
-        last_error_ = error;
-        
-        auto out = pout + integral_ + derivative;
+        T derivative = kd * (error_curr - error_prev);
+
+        T out = pout + integral_ + derivative;
         out = std::clamp(out, -max_out, max_out);
 
         output_ = out;
     }
 
     /**
-     * @brief 清空积分项、微分项与输出。
+     * @brief 清空积分项、误差缓存与输出。
      */
     void clean() {
         integral_ = 0;
         last_error_ = 0;
         output_ = 0;
+        target_ = 0;
     }
 
     /**
@@ -86,10 +97,10 @@ struct pid_base {
     T state() const { return output_; }
 
 private:
-    T target_ = 0;
-    fp32 integral_ = 0;
-    fp32 last_error_ = 0;
-    T output_ = 0;
+    T target_ = 0;       ///< 目标值
+    T integral_ = 0;     ///< 积分项累积
+    T last_error_ = 0;   ///< 上一次误差（等价 B 版 error[1]）
+    T output_ = 0;       ///< 输出结果
 };
 
 namespace details{
@@ -102,8 +113,9 @@ constexpr auto linear_error = [](fp32 cur, fp32 target) {
 /** @brief 角度误差计算方式，自动处理 2π 周期。 */
 constexpr auto rad_error = [](fp32 cur, fp32 target) {
     fp32 diff = target - cur;
-    while (diff > M_PI) diff -= 2 * M_PI;
-    while (diff < -M_PI) diff += 2 * M_PI;
+    diff = fmod(diff + M_PI, 2*M_PI);
+    if (diff < 0) diff += 2*M_PI;
+    diff -= M_PI;
     return diff;
 };
 

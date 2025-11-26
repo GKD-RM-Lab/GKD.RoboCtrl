@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <iostream>
 #include <format>
+#include <print>
 #include <sstream>
 #include <utility>
 
@@ -14,6 +15,8 @@ constexpr std::string_view _error_color = "\033[31m";
 constexpr std::string_view _info_color = "\033[32m";
 constexpr std::string_view _warn_color = "\033[33m";
 constexpr std::string_view _debug_color = "\033[34m";
+constexpr std::string_view _time_color    = "\033[35m";
+constexpr std::string_view _role_color    = "\033[36m";
 constexpr std::string_view _reset_color = "\033[0m";
 
 namespace {
@@ -32,7 +35,7 @@ std::string current_timestamp() {
     auto micros = duration_cast<microseconds>(now.time_since_epoch()) % 1'000'000;
 
     std::ostringstream oss;
-    oss << std::put_time(&tm_snapshot, "%Y-%m-%d %H:%M:%S")
+    oss << std::put_time(&tm_snapshot, "%H:%M:%S")
         << '.' << std::setw(6) << std::setfill('0') << micros.count();
     return oss.str();
 }
@@ -44,6 +47,10 @@ void roboctrl::logger::set_level(log_level level) {
 
 roboctrl::log_level roboctrl::logger::level(){
     return instance()._level.load();
+}
+
+void roboctrl::log::logger::set_filter(const std::string filter){
+    instance().filter_ = filter;
 }
 
 static inline std::string_view level_to_color(roboctrl::log_level level){
@@ -66,8 +73,12 @@ void roboctrl::logger::log_impl(log_level level, std::string_view role, std::str
     auto &stream = (level == log_level::Error) ? std::cerr : std::cout;
     const auto role_view = role.empty() ? std::string_view{"-"} : role;
 
-    std::println("{}[{}] [{}] [{}] {}{}",level_to_color(level), current_timestamp(),
-                          level_to_string(level), role_view, message,_reset_color);
+    auto output = std::format("{}[{}]{} [{}] {}[{}]: {}{}{}",_time_color, current_timestamp(),level_to_color(level),
+                          level_to_string(level),_role_color, role_view,level_to_color(level), message,_reset_color);
+    
+
+    if(level >= log_level::Warn || output.contains(filter_))
+        std::println("{}",output);
 }
 
 std::string_view roboctrl::logger::level_to_string(log_level level) {

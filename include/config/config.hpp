@@ -12,3 +12,7 @@
 #ifdef TYPE_SENTRY
 #include "config/config.sentry.hpp"
 #endif
+
+#ifdef TYPE_PROJECT
+#include "config/config.project.hpp"
+#endif

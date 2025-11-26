@@ -17,9 +17,9 @@ roboctrl::awaitable<void> chassis::task()
 }
 
 bool chassis::init(const chassis::info_type& info){
+    log_info("Chassis initiated");
     roboctrl::spawn(task());
-
-    return false;
+    return true;
 }
 
 roboctrl::awaitable<void> chassis::speed_decomposition(){
@@ -43,8 +43,13 @@ roboctrl::awaitable<void> chassis::speed_decomposition(){
     if(max_w > max_wheel_speed_) // 超速时按比例缩放
         fp32 factor = max_wheel_speed_ / max_w;
 
+    log_debug("left_front_motor : {}",w_lf * factor);
+    log_debug("right_front_motor : {}",-w_rf * factor);
+    log_debug("left_rear_motor : {}",w_lr * factor);
+    log_debug("right_rear_motor : {}",-w_rr * factor);
+
     co_await set_motor<dji_motor>("left_front_motor", w_lf * factor);
-    co_await set_motor<dji_motor>("right_front_motor", w_rf * factor);
+    co_await set_motor<dji_motor>("right_front_motor", -w_rf * factor);
     co_await set_motor<dji_motor>("left_rear_motor", w_lr * factor);
-    co_await set_motor<dji_motor>("right_rear_motor", w_rr * factor);
+    co_await set_motor<dji_motor>("right_rear_motor", -w_rr * factor);
 }

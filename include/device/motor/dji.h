@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <string_view>
 
@@ -41,6 +42,7 @@ public:
         std::string_view can_name;
         fp32 radius;
         utils::linear_pid::params_type pid_params;
+        std::chrono::steady_clock::duration control_time;
         inline std::string_view key()const{return name;}
     };
 
@@ -48,7 +50,7 @@ public:
      * @brief 描述信息，用于日志输出。
      */
     inline std::string desc() const{
-        return std::format("Dji motor(id={}) {} on {}",info_.id,info_.name,info_.can_name);
+        return std::format("Dji motor {}",info_.name);
     }
 
     dji_motor(info_type info);
@@ -56,7 +58,8 @@ public:
     /**
      * @brief 设置目标电流或速度（取决于电调模式）。
      */
-    awaitable<void> set(int16_t speed);
+    awaitable<void> set(fp32 speed);
+    awaitable<void> task();
     awaitable<void> enable(){co_return ;}
 
     inline int16_t current()const{return current_;}
@@ -109,6 +112,9 @@ public:
      */
     void register_motor(dji_motor* motor);
     inline std::string desc()const{return std::format("Dji motor group on can({})",info_.can_name);}
+
+private:
+    awaitable<void> send_command(uint16_t can_id_);
 private:
 
     struct motor_info{

@@ -182,6 +182,5 @@ struct function_arg<Ret(Class::*)(Arg) const> { using type = Arg; };
 template<typename Fn>
 using function_arg_t = typename function_arg<decltype(&Fn::operator())>::type;
 
-
 }
 }

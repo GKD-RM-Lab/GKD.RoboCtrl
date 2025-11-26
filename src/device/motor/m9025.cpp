@@ -34,6 +34,8 @@ M9025::M9025(const info_type& info):
         this->log_debug("angle:{}, speed:{}, torque:{}",this->angle_,this->angle_speed_,this->torque_);
         this->tick();
     });
+    
+    roboctrl::spawn(task());
 }
 
 roboctrl::awaitable<void> M9025::set(fp32 speed)

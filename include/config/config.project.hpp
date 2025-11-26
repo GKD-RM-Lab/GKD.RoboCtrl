@@ -16,8 +16,7 @@
 
 namespace roboctrl::config{
     constexpr std::initializer_list<io::can::info_type> cans = {
-        {"CAN_CHASSIS"},
-        {"CAN_GIMBAL"}
+        {"CAN_CHASSIS"}
     };
 
     constexpr std::initializer_list<io::serial::info_type> serials= {
@@ -34,15 +33,10 @@ namespace roboctrl::config{
     };
 
     constexpr std::initializer_list<device::dji_motor::info_type> dji_motors = {
-        {device::dji_motor::M3508,3,"left_front_motor"  ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
-        {device::dji_motor::M3508,4,"right_front_motor" ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
-        {device::dji_motor::M3508,1,"right_rear_motor"  ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
-        {device::dji_motor::M3508,2,"left_rear_motor"   ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
-        {device::dji_motor::M6020,1,"gimbal_yaw_motor"  ,"can0"       ,1},
-        {device::dji_motor::M6020,2,"gimbal_pitch_motor","can0"       ,1},
-        {device::dji_motor::M3508,1,"left_friction"     ,"can0"       ,0.075},
-        {device::dji_motor::M3508,2,"right_friction"    ,"can0"       ,0.075},
-        {device::dji_motor::M2006,3,"trigger"           ,"can0"       ,0.075}
+        {device::dji_motor::M3508,2,"left_front_motor"  ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
+        {device::dji_motor::M3508,1,"right_front_motor" ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
+        {device::dji_motor::M3508,4,"right_rear_motor"  ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
+        {device::dji_motor::M3508,3,"left_rear_motor"   ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
     };
 
     constexpr device::control_pad::info_type control_pad{

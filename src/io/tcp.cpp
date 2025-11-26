@@ -17,6 +17,8 @@ tcp::tcp(info_type info)
         info.port
     );
     socket_.connect(endpoint);
+    
+    roboctrl::spawn(task());
 }
 
 tcp::tcp(asio::ip::tcp::socket socket, std::string key)

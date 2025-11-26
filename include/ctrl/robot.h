@@ -20,7 +20,7 @@ enum class robot_state{
     NotFollow
 };
 
-class robot : public utils::singleton_base<robot>{
+class robot : public utils::singleton_base<robot>,public logable<robot>{
 public:
     robot() = default;
     struct info_type{
@@ -34,14 +34,14 @@ public:
     std::string desc()const{return "robot";}
 
     roboctrl::awaitable<void> task();
-    inline void set_velocity(int x,int y){
+    inline void set_velocity(fp32 x,fp32 y){
         roboctrl::get<chassis>().set_velocity({x,y});
     }
-    inline void set_velocity(vectori velocity){
+    inline void set_velocity(vectorf velocity){
         roboctrl::get<chassis>().set_velocity(velocity);
     }
 
-    inline vectori velocity()const{return roboctrl::get<chassis>().velocity();}
+    inline vectorf velocity()const{return roboctrl::get<chassis>().velocity();}
 
     inline fp32 gimbal_yaw()const{return roboctrl::get<chassis>().gimbal_yaw();}
     inline void set_gimbal_yaw(fp32 yaw){roboctrl::get<chassis>().set_gimbal_yaw(yaw);}
@@ -51,8 +51,6 @@ public:
 
     robot_state state()const{return state_;}
     void set_state(robot_state state){state_ = state;}
-
-    
 private:
     robot_state state_ {robot_state::Idle};
 };

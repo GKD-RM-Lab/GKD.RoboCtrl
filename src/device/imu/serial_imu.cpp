@@ -17,7 +17,7 @@ struct __serial_imu_pkg
 
 serial_imu::serial_imu(const info_type& info) :imu_base{100ms}, info_{info} {
     auto& serial = roboctrl::get<io::serial>(info.serial_name);
-    serial.on_data([&](const __serial_imu_pkg& pkg){
+    serial.on_data(1,[&](const __serial_imu_pkg& pkg){
         angle_ = {
             utils::rad_format(pkg.roll * Pi_f / 180.f), 
             utils::rad_format(pkg.pitch * Pi_f / 180.f),

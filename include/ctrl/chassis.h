@@ -14,8 +14,8 @@ public:
     inline void set_gimbal_yaw(fp32 yaw){gimbal_yaw_ = yaw;}
     inline fp32 gimbal_yaw()const {return gimbal_yaw_;}
 
-    inline void set_velocity(vectori velocity){velocity_ = velocity;}
-    inline vectori velocity()const {return velocity_;}
+    inline void set_velocity(vectorf velocity){velocity_ = velocity;}
+    inline vectorf velocity()const {return velocity_;}
 
     inline void set_rotate_speed(fp32 speed){rotate_speed_ = speed;}
     inline fp32 rotate_speed()const {return rotate_speed_;}
@@ -28,7 +28,7 @@ public:
 private:
     awaitable<void> speed_decomposition();
 
-    vectori velocity_;
+    vectorf velocity_;
     fp32 gimbal_yaw_ {};
     fp32 rotate_speed_ {};
     fp32 max_wheel_speed_ {2.5f};

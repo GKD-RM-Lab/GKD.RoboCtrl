@@ -13,6 +13,7 @@ roboctrl::awaitable<void> gimbal::task(){
 }
 
 bool gimbal::init(const info_type& info){
+    log_info("Gimbal initiated");
     roboctrl::spawn(task());
     return true;
 }

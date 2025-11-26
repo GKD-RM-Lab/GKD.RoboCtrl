@@ -61,6 +61,10 @@ can::can(const can::info_type& info)
     stream_.assign(fd);
 
     cf_ = (::can_frame*)std::malloc(sizeof(::can_frame) + 8);
+
+    log_info("Can io created on {}",info.can_name);
+    
+    roboctrl::spawn(task());
 }
 
 can::~can(){
@@ -75,26 +79,34 @@ roboctrl::awaitable<void> can::task(){
         can_id_type id = cf.can_id;
         size_t can_size= cf.can_dlc;
 
-        log_debug("recv can frame: {}",cf);
+        //log_debug("recv can frame: {}",cf);
 
         dispatch(id,std::span{(std::byte*)cf.data,can_size});
     }
 }
 
 roboctrl::awaitable<void> can::send(byte_span frame){
-    co_await stream_.async_write_some(asio::buffer(frame),asio::use_awaitable);
+    co_await stream_.async_write_some(
+        asio::buffer(frame.data(), frame.size()),
+        asio::use_awaitable
+    );
 }
 
-roboctrl::awaitable<void> can::send(can_id_type id,byte_span data){
 
-    if(data.size() > 8){
+roboctrl::awaitable<void> can::send(can_id_type id, byte_span data) {
+
+    if (data.size() > 8) {
         throw std::invalid_argument("payload of can can't > 8");
     }
-    
-    const auto size = sizeof(can_frame) + data.size();
+
     cf_->can_id = id;
     cf_->can_dlc = data.size();
-    std::memcpy(cf_->data,data.data(),data.size());
+    std::memcpy(cf_->data, data.data(), data.size());
 
-    co_await send({(std::byte*)cf_,size});
+    log_debug("send can frame: {}", *cf_);
+
+    co_await stream_.async_write_some(
+        asio::buffer(cf_, sizeof(can_frame)),
+        asio::use_awaitable
+    );
 }

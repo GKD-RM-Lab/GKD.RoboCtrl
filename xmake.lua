@@ -11,7 +11,7 @@ option("type")
     set_default("infantry")
     set_showmenu(true)
     set_description("指定要编译的机器人类型")
-    set_values("infantry","hero","sentry")
+    set_values("infantry","hero","sentry","project")
     after_check(function(option)
         local val = option:value()
         local type = 0
@@ -22,6 +22,8 @@ option("type")
             type = 2
         elseif val == "sentry" then 
             type = 3
+        elseif val == "project" then 
+            type = 4
         else
             raise("Invaild type : " .. val)
         end 

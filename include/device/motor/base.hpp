@@ -15,6 +15,7 @@
 #include <type_traits>
 
 #include "core/async.hpp"
+#include "core/logger.h"
 #include "core/multiton.hpp"
 #include "device/base.hpp"
 #include "utils/controller.hpp"
