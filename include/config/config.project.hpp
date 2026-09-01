@@ -32,6 +32,14 @@ namespace roboctrl::config{
             .max_iout =     2000.0f
     };
 
+    constexpr utils::rad_pid::params_type chassis_follow_pid = {
+        .kp = 4.0f,
+        .ki = 0.0f,
+        .kd = 10.0f,
+        .max_out = 6.0f,
+        .max_iout = 0.2f
+    };
+
     constexpr std::initializer_list<device::dji_motor::info_type> dji_motors = {
         {device::dji_motor::M3508,2,"left_front_motor"  ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
         {device::dji_motor::M3508,1,"right_front_motor" ,"CAN_CHASSIS",0.075,chassis_motor_pid,2ms},
@@ -53,11 +61,14 @@ namespace roboctrl::config{
 
         },
         .chassis_info{
-
+            .follow_pid = chassis_follow_pid,
+            .follow_direction = 1.0f,
+            .control_time = 2ms
         },
         .shoot_info{
 
         },
+        .control_pad_key = "serial1",
         .enable_chassis = true,
         .enable_gimbal = false,
         .enable_shoot = false

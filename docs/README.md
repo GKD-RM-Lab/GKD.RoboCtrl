@@ -21,6 +21,9 @@
 | 控制 | `include/ctrl/`、`src/ctrl/` | 底盘、云台、发射、整机状态与功率管理 | [`modules/control.md`](modules/control.md) |
 | 工具 | `include/utils/` | PID、斜坡、回调、矩阵/RLS、字节与类型工具 | [`modules/utils.md`](modules/utils.md) |
 
+旧工程 `GKD_Control` 的迁移范围、已落地行为和明确未迁移项见
+[`migration-gkd-control.md`](migration-gkd-control.md)。
+
 ## 成熟度术语
 
 本文档统一使用以下标签，避免把接口数量误认为完成度：
@@ -35,10 +38,10 @@
 - 默认构建类型是 `infantry`；可选 `hero`、`sentry`、`project`。
 - `src/main.cpp` 先整体验证配置，再构造 CAN、串口、DJI 电机、遥控器和 IMU，连接依赖后初始化 `robot`。
 - CAN、串口和 DJI 电机采用“构造 → 连接 → 启动”阶段，不在构造函数中启动长期协程。
-- Robot 默认进入 `NoForce`，DJI 电机默认禁用；切换到其他状态才允许非零控制输出。
+- Robot 默认进入 `NoForce`，DJI 电机默认禁用；遥控器完成双开关加滚轮解锁手势后进入 `FollowGimbal`，遥控失联会退回 `NoForce`。
 - Infantry/Hero 启用底盘、云台和发射，Sentry/Project 当前只启用底盘；“启用”不等于功能已经完整。
-- `gimbal`、`power_manager`、`referee`、M9025 等存在明显骨架或未完成部分，详见模块文档。
-- `tests/unit_tests.cpp` 覆盖配置校验、multiton 重复键、组合解析器、底盘限速和 `motor_ref`；新增 CI 目标是覆盖四车型的 Debug/Release 组合，但当前工作流命令仍有已知问题，见构建文档。
+- `gimbal` 已接入 IMU 角度外环和电机速度目标，`power_manager`、`referee`、M9025 等仍有明显骨架或未完成部分，详见模块文档。
+- `tests/unit_tests.cpp` 覆盖配置校验、multiton 重复键、组合解析器、底盘限速、遥控映射、发射互锁和 `motor_ref`；新增 CI 目标是覆盖四车型的 Debug/Release 组合，但当前工作流命令仍有已知问题，见构建文档。
 - 运行主程序仍需要 Linux SocketCAN、串口和真实/仿真硬件；单元测试通过不等于实车安全。
 
 ## 按改动类型定位文档

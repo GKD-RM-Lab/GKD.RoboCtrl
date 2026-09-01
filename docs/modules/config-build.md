@@ -8,6 +8,8 @@
 
 `xmake f --type=<infantry|hero|sentry|project>` 选择配置。四种配置都声明 CAN、串口、DJI 电机、ControlPad、IMU 和 Robot 参数；Project/Sentry 当前只启用底盘控制，Infantry/Hero 同时声明云台与发射。
 
+底盘配置还声明云台跟随 PID、方向与 2 ms 周期；Infantry/Hero 的 Gimbal 声明 IMU/电机 key、角度 PID 和 1 ms 周期，Shoot 声明摩擦轮斜坡、最大速度与车型相关的拨弹速度。配置预检会验证这些 key、方向、范围和周期。
+
 | 类型 | CAN | 串口设备 | 电机集合 | 启用控制 |
 | --- | --- | --- | --- | --- |
 | `infantry` | `can0`、`can1` | `/dev/IMU_HERO` | 4 底盘 + 2 云台 + 2 摩擦轮 + 1 拨弹 | chassis、gimbal、shoot |

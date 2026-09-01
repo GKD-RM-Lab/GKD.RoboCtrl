@@ -62,6 +62,10 @@ inline void validate_configuration(
         throw std::invalid_argument(std::format(
             "IMU {} references missing serial {}", imu.name, imu.serial_name));
     }
+    if (robot.control_pad_key != control_pad.key()) {
+        throw std::invalid_argument(std::format(
+            "robot references missing control pad {}", robot.control_pad_key));
+    }
 
     std::unordered_set<std::string_view> motor_names;
     std::unordered_set<std::string> feedback_slots;
@@ -119,19 +123,42 @@ inline void validate_configuration(
     };
 
     if (robot.enable_chassis) {
-        require_motor("left_front_motor", "chassis");
-        require_motor("right_front_motor", "chassis");
-        require_motor("left_rear_motor", "chassis");
-        require_motor("right_rear_motor", "chassis");
+        require_motor(robot.chassis_info.left_front_motor, "chassis");
+        require_motor(robot.chassis_info.right_front_motor, "chassis");
+        require_motor(robot.chassis_info.left_rear_motor, "chassis");
+        require_motor(robot.chassis_info.right_rear_motor, "chassis");
+        if (robot.chassis_info.control_time <= std::chrono::steady_clock::duration::zero() ||
+            robot.chassis_info.follow_direction == 0.0f ||
+            robot.chassis_info.follow_settle_angle < 0.0f) {
+            throw std::invalid_argument("chassis has invalid follow-control parameters");
+        }
     }
     if (robot.enable_gimbal) {
-        require_motor("gimbal_yaw_motor", "gimbal");
-        require_motor("gimbal_pitch_motor", "gimbal");
+        require_motor(robot.gimbal_info.yaw_motor_key, "gimbal");
+        require_motor(robot.gimbal_info.pitch_motor_key, "gimbal");
+        if (robot.gimbal_info.imu_key != imu.key()) {
+            throw std::invalid_argument(std::format(
+                "gimbal references missing IMU {}", robot.gimbal_info.imu_key));
+        }
+        if (robot.gimbal_info.control_time <= std::chrono::steady_clock::duration::zero() ||
+            robot.gimbal_info.yaw_direction == 0.0f ||
+            robot.gimbal_info.pitch_direction == 0.0f ||
+            robot.gimbal_info.pitch_min > robot.gimbal_info.pitch_max) {
+            throw std::invalid_argument("gimbal has invalid control parameters");
+        }
     }
     if (robot.enable_shoot) {
-        require_motor("left_friction", "shoot");
-        require_motor("right_friction", "shoot");
-        require_motor("trigger", "shoot");
+        require_motor(robot.shoot_info.left_friction_motor, "shoot");
+        require_motor(robot.shoot_info.right_friction_motor, "shoot");
+        require_motor(robot.shoot_info.trigger_motor, "shoot");
+        if (robot.shoot_info.control_time <= std::chrono::steady_clock::duration::zero() ||
+            robot.shoot_info.jam_release_time < std::chrono::steady_clock::duration::zero() ||
+            robot.shoot_info.friction_max_speed < 0.0f ||
+            robot.shoot_info.friction_ready_speed < 0.0f ||
+            robot.shoot_info.jam_current < 0.0f ||
+            robot.shoot_info.jam_speed < 0.0f) {
+            throw std::invalid_argument("shoot has invalid control parameters");
+        }
     }
 }
 

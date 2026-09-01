@@ -40,6 +40,14 @@ namespace roboctrl::config{
         .max_iout = 0.0f
     };
 
+    constexpr utils::rad_pid::params_type chassis_follow_pid = {
+        .kp = 2.0f,
+        .ki = 0.0f,
+        .kd = 10.0f,
+        .max_out = 6.0f,
+        .max_iout = 0.2f
+    };
+
     constexpr std::initializer_list<device::dji_motor::info_type> dji_motors = {
         {device::dji_motor::M3508,1,"left_front_motor","can1",0.075,motor_pid,2ms},
         {device::dji_motor::M3508,2,"right_front_motor","can1",0.075,motor_pid,2ms},
@@ -63,17 +71,24 @@ namespace roboctrl::config{
 
     constexpr roboctrl::ctrl::robot::info_type robot{
         .gimbal_info{
-            .yaw_motor_params{"gimbal_yaw_motor", gimbal_pid},
-            .init_yaw_motor_params{"gimbal_yaw_motor", gimbal_pid},
-            .pitch_motor_params{"gimbal_pitch_motor", gimbal_pid}
+            .imu_key = "imu",
+            .yaw_motor_key = "gimbal_yaw_motor",
+            .pitch_motor_key = "gimbal_pitch_motor",
+            .yaw_angle_pid = gimbal_pid,
+            .pitch_angle_pid = gimbal_pid,
+            .control_time = 1ms
         },
         .chassis_info{
-
+            .follow_pid = chassis_follow_pid,
+            .follow_direction = -1.0f,
+            .control_time = 2ms
         },
         .shoot_info{
             .friction_params{.acc = 100.0f},
-            .friction_max_speed = 20.0f
+            .friction_max_speed = 20.0f,
+            .trigger_speed = 6.0f
         },
+        .control_pad_key = "serial1",
         .enable_chassis = true,
         .enable_gimbal = true,
         .enable_shoot = true

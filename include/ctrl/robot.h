@@ -1,11 +1,14 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include "core/async.hpp"
 #include "ctrl/chassis.h"
+#include "ctrl/control_mapping.hpp"
 #include "ctrl/gimbal.h"
 #include "ctrl/shoot.h"
+#include "device/controlpad.h"
 #include "utils/singleton.hpp"
 #include "utils/utils.hpp"
 
@@ -28,6 +31,7 @@ public:
         gimbal::info_type gimbal_info;
         chassis::info_type chassis_info;
         shoot::info_type shoot_info;
+        std::string_view control_pad_key {"serial1"};
         bool enable_chassis {true};
         bool enable_gimbal {false};
         bool enable_shoot {false};
@@ -55,7 +59,14 @@ public:
     robot_state state()const{return state_;}
     void set_state(robot_state state);
 private:
+    void handle_control(const device::control_pad_state& input);
+
     robot_state state_ {robot_state::NoForce};
+    std::string_view control_pad_key_;
+    bool enable_chassis_ {false};
+    bool enable_gimbal_ {false};
+    bool enable_shoot_ {false};
+    control_mapper control_mapper_;
 };
 
 static_assert(utils::singleton<robot>);

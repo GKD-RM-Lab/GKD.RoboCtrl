@@ -12,6 +12,8 @@
 #include "config/config.hpp"
 #include "config/validate.hpp"
 #include "ctrl/chassis_kinematics.hpp"
+#include "ctrl/control_mapping.hpp"
+#include "ctrl/shoot_logic.hpp"
 #include "device/motor/ref.hpp"
 #include "io/base.hpp"
 
@@ -144,6 +146,55 @@ void test_chassis_speed_limit() {
     assert(peak <= 2.5f + 1e-6f);
 }
 
+void test_control_mapping_requires_arm_and_preserves_edges() {
+    roboctrl::ctrl::control_mapper mapper;
+    roboctrl::device::control_pad_state input;
+    input.ch3 = 660;
+    auto command = mapper.update(input);
+    assert(command.velocity.x == 0.0f);
+    assert(!mapper.armed());
+
+    input = {.ch4 = -660, .s1 = 2, .s2 = 2};
+    command = mapper.update(input);
+    assert(command.arm_requested);
+    assert(mapper.armed());
+
+    input = {.ch1 = 330, .ch2 = -330, .ch3 = 660, .ch4 = 660, .s1 = 1, .s2 = 1};
+    command = mapper.update(input);
+    assert(std::fabs(command.velocity.x - 3.0f) < 1e-6f);
+    assert(std::fabs(command.velocity.y + 1.5f) < 1e-6f);
+    assert(command.rotate_speed == 1.0f);
+    assert(command.friction_enabled);
+    assert(command.firing);
+    assert(command.use_pitch_target);
+
+    input = {.key = 0x40};
+    command = mapper.update(input);
+    assert(command.rotate_speed == 1.0f);
+    command = mapper.update(input);
+    assert(command.rotate_speed == 1.0f);
+    input.key = 0;
+    mapper.update(input);
+    input.key = 0x40;
+    command = mapper.update(input);
+    assert(command.rotate_speed == 0.0f);
+
+    mapper.reset();
+    command = mapper.update({.ch3 = 660});
+    assert(!mapper.armed());
+    assert(command.velocity.x == 0.0f);
+}
+
+void test_shoot_interlocks() {
+    using roboctrl::ctrl::trigger_feed_allowed;
+    using roboctrl::ctrl::trigger_jammed;
+    assert(trigger_jammed(4500.0f, 0.5f, 4000.0f, 1.0f));
+    assert(!trigger_jammed(3500.0f, 0.5f, 4000.0f, 1.0f));
+    assert(trigger_feed_allowed(true, true, true, true, false));
+    assert(!trigger_feed_allowed(true, true, true, true, true));
+    assert(!trigger_feed_allowed(true, false, true, true, false));
+}
+
 void test_selected_configuration() {
     roboctrl::config::validate_configuration(
         roboctrl::config::cans,
@@ -154,6 +205,25 @@ void test_selected_configuration() {
         roboctrl::config::robot);
 }
 
+void test_rejects_invalid_control_configuration() {
+    auto invalid_robot = roboctrl::config::robot;
+    invalid_robot.chassis_info.follow_direction = 0.0f;
+
+    bool threw = false;
+    try {
+        roboctrl::config::validate_configuration(
+            roboctrl::config::cans,
+            roboctrl::config::serials,
+            roboctrl::config::dji_motors,
+            roboctrl::config::control_pad,
+            roboctrl::config::imu,
+            invalid_robot);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    assert(threw);
+}
+
 } // namespace
 
 int main() {
@@ -161,5 +231,8 @@ int main() {
     test_multiton_rejects_duplicate_before_construction();
     test_combined_parser();
     test_chassis_speed_limit();
+    test_control_mapping_requires_arm_and_preserves_edges();
+    test_shoot_interlocks();
     test_selected_configuration();
+    test_rejects_invalid_control_configuration();
 }

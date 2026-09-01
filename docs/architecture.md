@@ -24,7 +24,7 @@ core + utils ───────── 事件循环、实例管理、日志、
 Linux SocketCAN / serial / TCP / UDP
 ```
 
-允许同层协作和上层依赖下层，不应让 `io` 依赖设备或控制业务，也不应让设备驱动直接决定机器人模式。当前少数设备（例如遥控器）已经包含对控制层的 include，但其实现尚未真正驱动机器人；新增代码应优先通过回调、状态输入或显式上层编排，避免扩大反向耦合。
+允许同层协作和上层依赖下层，不应让 `io` 依赖设备或控制业务，也不应让设备驱动直接决定机器人模式。ControlPad 在 Device 层只发布解析后的输入，由 Robot 在 Control 层完成映射和状态切换。
 
 ## 启动生命周期
 
@@ -32,9 +32,11 @@ Linux SocketCAN / serial / TCP / UDP
 2. `src/main.cpp` 解析 `--help`、`--log`、`--filter` 并设置全局日志器。
 3. `validate_configuration()` 在访问硬件前检查 key、依赖、DJI ID/指令槽和控制模块必需电机。
 4. `roboctrl::init` 先构造 CAN、串口、DJI 电机、遥控器和 IMU；DJI 电机此时不注册回调或启动任务。
-5. `connect_all<dji_motor>()` 连接 CAN 回调和电机组，再初始化 `robot`；Robot 按车型开关初始化子系统并默认保持 `NoForce`。
+5. `connect_all<dji_motor>()` 连接 CAN 回调和电机组，再初始化 `robot`；Robot 按车型开关初始化子系统、订阅 ControlPad 输入并默认保持 `NoForce`。
 6. 依次 `start_all<can>()`、`start_all<serial>()`、`start_all<dji_motor_group>()` 和 `start_all<dji_motor>()`；各 `start()` 是幂等的。
 7. `async::run()` 启动唯一的 `asio::io_context`，所有 IO 接收、周期控制和回调协程在同一线程协作运行。
+
+运行后，双开关加滚轮解锁手势是从 `NoForce` 进入 `FollowGimbal` 的入口；100 ms 内无有效 ControlPad 报文时 Robot 会重新进入 `NoForce`。
 
 初始化顺序是隐式依赖注入的一部分。遥控器和串口 IMU 在构造时通过串口名称注册回调；DJI 电机刻意把构造与 `connect()` 分开，保证同批对象全部注册后才建立跨对象关系。顺序错误会由配置预检或 `get()` 明确报错。
 
