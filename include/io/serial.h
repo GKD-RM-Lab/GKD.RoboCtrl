@@ -50,6 +50,8 @@ public:
      */
     explicit serial(info_type info);
 
+    void start();
+
     /**
      * @brief 发送字节数据。
      */
@@ -76,6 +78,7 @@ private:
     asio::serial_port port_;
     info_type info_;
     std::array<std::byte,1024> buffer_;
+    bool started_ {false};
 
     static constexpr uint16_t header_magic = 0xAA55;
 };

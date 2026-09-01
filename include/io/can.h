@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <string_view>
 #include <asio.hpp>
-#include <linux/can.h>
 
 #include "base.hpp"
 #include "core/async.hpp"
@@ -42,7 +41,9 @@ public:
      */
     can(const info_type& info);
 
-    ~can();
+    ~can() = default;
+
+    void start();
 
     /**
      * @brief 发送裸帧。
@@ -67,7 +68,7 @@ private:
     asio::posix::stream_descriptor stream_;
     info_type info_;
     std::array<std::byte,20> buffer_;
-    ::can_frame *cf_;
     std::string can_name_;
+    bool started_ {false};
 };
 }

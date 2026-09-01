@@ -41,6 +41,8 @@ public:
      */
     udp(info_type info);
 
+    void start();
+
     /**
      * @brief 异步发送一段字节数据。
      */
@@ -59,6 +61,7 @@ private:
   asio::ip::udp::socket socket_;
   info_type info_;
   std::array<std::byte,1024> buffer_;
+  bool started_ {false};
 };
 
 static_assert(bare_io<udp>);

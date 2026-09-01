@@ -3,6 +3,8 @@
 
 [文档](https://gkd-rm-lab.github.io/GKD.RoboCtrl/)
 
+[Agent 开发文档](docs/README.md)
+
 ## 多例
 在机器人的电控中，有很多类是会在初始化时创建多个对象，并且生命周期几乎是从程序开始到结束，例如马达对象，Can对象等等 ，我们称这种对象为多例。我们希望有一个简单的拿到各个实例的方法。
 
@@ -177,3 +179,30 @@ xxx_io.on_data([&](const xxx_pkg& pkg){
 ### 马达
 
 马达设备有相似的功能，因此可以被进一步抽象。
+
+#### 类型擦除引用 `motor_ref`
+
+控制模块如果保存的是 `motor_ref`，只需在初始化时指定一次实际电机类型，之后不再需要重复写
+`set_motor<具体电机类型>(名称, 目标值)`：
+
+```cpp
+#include "device/motor/ref.hpp"
+
+auto left_front = roboctrl::device::motor_ref::from<roboctrl::device::dji_motor>(
+    "left_front_motor");
+
+co_await left_front.set(1.5f);
+float speed = left_front.linear_speed();
+bool offline = left_front.offline();
+```
+
+如果手中已有某个电机的 `info_type`，还可以让构造函数自动推导实际电机类型：
+
+```cpp
+roboctrl::device::motor_ref motor{motor_info};
+co_await motor.set(1.5f);
+```
+
+`motor_ref` 是非拥有型引用，不负责创建或销毁电机；应当在对应 multiton 电机实例完成初始化后绑定。
+它可以复制并放入容器，统一提供 `set()`、`enable()`、角度、速度、扭矩和离线状态接口。
+原有 `set_motor<T>()` 仍保留用于兼容旧代码。

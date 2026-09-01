@@ -17,7 +17,13 @@ tcp::tcp(info_type info)
         info.port
     );
     socket_.connect(endpoint);
-    
+}
+
+void tcp::start() {
+    if (started_) {
+        return;
+    }
+    started_ = true;
     roboctrl::spawn(task());
 }
 
@@ -40,7 +46,7 @@ roboctrl::awaitable<void> tcp::task()
 {
     while(true){
         auto bytes = co_await socket_.async_read_some(asio::buffer(buffer_), asio::use_awaitable);
-        dispatch(buffer_);
+        dispatch(byte_span{buffer_.data(), bytes});
     }
 }
 
@@ -66,7 +72,7 @@ roboctrl::awaitable<void> tcp_server::task()
         co_await acceptor_.async_accept(socket, asio::use_awaitable);
         auto connection = make_connection(std::move(socket));
         connections_.push_back(connection);
-        roboctrl::spawn(connection->task());
+        connection->start();
         on_connect_(connection);
     }
 }

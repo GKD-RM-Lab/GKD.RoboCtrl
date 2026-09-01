@@ -28,6 +28,9 @@ public:
         gimbal::info_type gimbal_info;
         chassis::info_type chassis_info;
         shoot::info_type shoot_info;
+        bool enable_chassis {true};
+        bool enable_gimbal {false};
+        bool enable_shoot {false};
     };
 
     bool init(const info_type& info);
@@ -50,9 +53,9 @@ public:
     inline fp32 chassis_rotate_speed()const{return roboctrl::get<chassis>().rotate_speed();}
 
     robot_state state()const{return state_;}
-    void set_state(robot_state state){state_ = state;}
+    void set_state(robot_state state);
 private:
-    robot_state state_ {robot_state::Idle};
+    robot_state state_ {robot_state::NoForce};
 };
 
 static_assert(utils::singleton<robot>);

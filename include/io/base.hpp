@@ -22,6 +22,7 @@
 #include <type_traits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "core/async.hpp"
@@ -150,14 +151,23 @@ protected:
      * @brief 将数据派发给对应 key 的回调。
      */
     inline void dispatch(const TK& key,byte_span data){
-        auto pd = make_shared_from(data);
-        if(callbacks_.contains(key)){
-            callbacks_.at(key)(pd);
+        const auto callback_it = callbacks_.find(key);
+        if (callback_it == callbacks_.end()) {
+            return;
         }
+        const auto size_it = sizes_.find(key);
+        if (size_it != sizes_.end() && size_it->second != 0 && size_it->second != data.size()) {
+            return;
+        }
+        callback_it->second(make_shared_from(data));
     }
 
-    inline size_t package_size(const TK& key){
-        return sizes_[key];
+    inline std::optional<size_t> package_size(const TK& key) const {
+        const auto it = sizes_.find(key);
+        if (it == sizes_.end() || it->second == 0) {
+            return std::nullopt;
+        }
+        return it->second;
     }
 
 private:
@@ -190,7 +200,7 @@ concept keyed_io = std::is_base_of_v<keyed_io_base<typename T::key_type>, T> && 
 template<typename T>
 concept data_parser = requires (T t,byte_span bytes){
     typename T::data_type;
-    {t.parse(std::declval<size_t>(),bytes)} -> std::same_as<std::size_t>;
+    {t.parse(bytes)} -> std::same_as<std::size_t>;
     {t.data()} -> std::same_as<typename T::data_type>;
 };
 
@@ -211,16 +221,22 @@ struct combined_parser{
      */
     size_t parse(byte_span data){
         size_t pos = 0;
-        for(auto& parser : parsers){
-            size_t diff  = parser.parse(pos,data);
+        bool valid = true;
+        std::apply([&](auto&... parser) {
+            ([&] {
+                if (!valid) {
+                    return;
+                }
+                const size_t consumed = parser.parse(data.subspan(pos));
+                if (consumed == 0 || consumed > data.size() - pos) {
+                    valid = false;
+                    return;
+                }
+                pos += consumed;
+            }(), ...);
+        }, parsers);
 
-            if(!diff)
-                return false;
-
-            pos += diff;
-        }
-
-        return pos;
+        return valid ? pos : 0;
     }
 
     /**
@@ -254,7 +270,7 @@ struct nbytes{
         return data_;
     }
 
-    data_type data_;
+    data_type data_{};
 };
 
 /**
@@ -276,7 +292,7 @@ struct struct_data{
         return data_;
     }
 
-    data_type data_;
+    data_type data_{};
 };
 
 /**
@@ -320,7 +336,7 @@ struct other_all{
         return data_;
     }
 
-    data_type data_;
+    data_type data_{};
 };
 
 /**

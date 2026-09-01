@@ -51,6 +51,8 @@ public:
      */
     tcp(asio::ip::tcp::socket socket, std::string key);
 
+    void start();
+
     /**
      * @brief 发送字节数据。
      */
@@ -69,6 +71,7 @@ private:
     asio::ip::tcp::socket socket_;
     info_type info_;
     std::array<std::byte,1024> buffer_;
+    bool started_ {false};
 };
 
 static_assert(bare_io<tcp>);

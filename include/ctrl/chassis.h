@@ -2,6 +2,7 @@
 
 #include "core/async.hpp"
 #include "core/logger.h"
+#include "device/motor/ref.hpp"
 #include "utils/singleton.hpp"
 #include "utils/utils.hpp"
 
@@ -28,10 +29,14 @@ public:
 private:
     awaitable<void> speed_decomposition();
 
-    vectorf velocity_;
+    vectorf velocity_{};
     fp32 gimbal_yaw_ {};
     fp32 rotate_speed_ {};
     fp32 max_wheel_speed_ {2.5f};
+    device::motor_ref left_front_motor_;
+    device::motor_ref right_front_motor_;
+    device::motor_ref left_rear_motor_;
+    device::motor_ref right_rear_motor_;
 };
 
 static_assert(utils::singleton<chassis>);

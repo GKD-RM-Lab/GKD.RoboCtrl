@@ -8,6 +8,7 @@
 #include <concepts>
 #include <functional>
 #include <type_traits>
+#include <tuple>
 #include <vector>
 #include <utility>
 
@@ -39,11 +40,16 @@ public:
      * @brief 触发所有回调。
      * @param args 透传给回调的参数
      */
-    template<typename... CallArgs>
-    void operator()(CallArgs&&... args) const {
-        for (auto const& fn : fns_) {
-            roboctrl::spawn(fn(std::forward<CallArgs>(args)...));
-        }
+    void operator()(Args... args) const {
+        auto fns = fns_;
+        auto call_args = std::make_tuple(std::move(args)...);
+        roboctrl::spawn(
+            [fns = std::move(fns), call_args = std::move(call_args)]() mutable -> awaitable<void> {
+                for (auto& fn : fns) {
+                    co_await std::apply(fn, call_args);
+                }
+            }()
+        );
     }
 
     /**

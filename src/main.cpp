@@ -1,4 +1,5 @@
 #include "config/config.hpp"
+#include "config/validate.hpp"
 #include "core/logger.h"
 #include "core/async.hpp"
 #include "core/multiton.hpp"
@@ -25,16 +26,32 @@ using namespace roboctrl::log;
     if(!roboctrl::init(conf))   \
         return false
 
-static bool init(){
+static bool initialize_system(){
     try{
+        config::validate_configuration(
+            config::cans,
+            config::serials,
+            config::dji_motors,
+            config::control_pad,
+            config::imu,
+            config::robot
+        );
+
         check_init(config::cans);
         check_init(config::serials);
         check_init(config::dji_motors);
         check_init(config::control_pad);
-        // check_init(config::imu);
-        // check_init(config::robot);
+        check_init(config::imu);
+
+        roboctrl::connect_all<device::dji_motor>();
+        check_init(config::robot);
+
+        roboctrl::start_all<io::can>();
+        roboctrl::start_all<io::serial>();
+        roboctrl::start_all<device::dji_motor_group>();
+        roboctrl::start_all<device::dji_motor>();
     }
-    catch(std::runtime_error e){
+    catch(const std::exception& e){
         std::println("exception : {}",e.what());
         return false;
     }
@@ -83,14 +100,12 @@ int main(int argc,char** argv){
         logger::set_filter(result["filter"].as<std::string>());
     }
 
-    if(!::init()){
+    if(!initialize_system()){
         std::println("Initiation failed");
         return -1;
     }
 
     LOG_INFO("Initiation finished.");
-
-    roboctrl::get<ctrl::robot>().set_velocity(0.1,0.1);
 
     async::run();
 }

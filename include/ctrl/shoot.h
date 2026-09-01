@@ -3,6 +3,7 @@
 #include "utils/singleton.hpp"
 #include "core/async.hpp"
 #include "core/logger.h"
+#include "device/motor/ref.hpp"
 
 namespace roboctrl::ctrl{
 
@@ -33,7 +34,10 @@ private:
     info_type info_;
     utils::ramp_f friction_ramp_;
 
-    bool firing_;
+    bool firing_ {false};
+    device::motor_ref left_friction_motor_;
+    device::motor_ref right_friction_motor_;
+    device::motor_ref trigger_motor_;
 
 };
 

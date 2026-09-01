@@ -1,6 +1,8 @@
 #include "ctrl/chassis.h"
+#include "ctrl/chassis_kinematics.hpp"
 #include "core/async.hpp"
 #include "ctrl/gimbal.h"
+#include "ctrl/robot.h"
 #include "device/motor/base.hpp"
 #include "device/motor/dji.h"
 #include "utils/utils.hpp"
@@ -17,39 +19,34 @@ roboctrl::awaitable<void> chassis::task()
 }
 
 bool chassis::init(const chassis::info_type& info){
+    left_front_motor_ = motor_ref::from<dji_motor>("left_front_motor");
+    right_front_motor_ = motor_ref::from<dji_motor>("right_front_motor");
+    left_rear_motor_ = motor_ref::from<dji_motor>("left_rear_motor");
+    right_rear_motor_ = motor_ref::from<dji_motor>("right_rear_motor");
     log_info("Chassis initiated");
     roboctrl::spawn(task());
     return true;
 }
 
 roboctrl::awaitable<void> chassis::speed_decomposition(){
-    fp32 sin_yaw, cos_yaw;
-    sincosf(roboctrl::get<gimbal>().yaw(), &sin_yaw, &cos_yaw);
+    if (roboctrl::get<robot>().state() == robot_state::NoForce) {
+        co_await left_front_motor_.set(0.0f);
+        co_await right_front_motor_.set(0.0f);
+        co_await left_rear_motor_.set(0.0f);
+        co_await right_rear_motor_.set(0.0f);
+        co_return;
+    }
 
-    fp32 vx =  cos_yaw * velocity_.x + sin_yaw * velocity_.y;
-    fp32 vy = -sin_yaw * velocity_.x + cos_yaw * velocity_.y;
-    fp32 wz = rotate_speed_;
+    const auto wheels = mecanum_wheel_speeds(
+        velocity_, gimbal_yaw_, rotate_speed_, max_wheel_speed_);
 
-    fp32 w_lf = vx - vy - wz;
-    fp32 w_rf = vx + vy + wz;
-    fp32 w_lr = vx + vy - wz;
-    fp32 w_rr = vx - vy + wz;
+    log_debug("left_front_motor : {}",wheels.left_front);
+    log_debug("right_front_motor : {}",-wheels.right_front);
+    log_debug("left_rear_motor : {}",wheels.left_rear);
+    log_debug("right_rear_motor : {}",-wheels.right_rear);
 
-    float max_w = std::max({w_lf,w_rf,w_lr,w_rr});
-    max_w = std::max(max_w,-std::min({w_lf,w_rf,w_lr,w_rr}));
-
-    fp32 factor = 1.0;
-
-    if(max_w > max_wheel_speed_) // 超速时按比例缩放
-        fp32 factor = max_wheel_speed_ / max_w;
-
-    log_debug("left_front_motor : {}",w_lf * factor);
-    log_debug("right_front_motor : {}",-w_rf * factor);
-    log_debug("left_rear_motor : {}",w_lr * factor);
-    log_debug("right_rear_motor : {}",-w_rr * factor);
-
-    co_await set_motor<dji_motor>("left_front_motor", w_lf * factor);
-    co_await set_motor<dji_motor>("right_front_motor", -w_rf * factor);
-    co_await set_motor<dji_motor>("left_rear_motor", w_lr * factor);
-    co_await set_motor<dji_motor>("right_rear_motor", -w_rr * factor);
+    co_await left_front_motor_.set(wheels.left_front);
+    co_await right_front_motor_.set(-wheels.right_front);
+    co_await left_rear_motor_.set(wheels.left_rear);
+    co_await right_rear_motor_.set(-wheels.right_rear);
 }

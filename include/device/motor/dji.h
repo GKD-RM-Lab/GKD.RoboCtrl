@@ -55,22 +55,32 @@ public:
 
     dji_motor(info_type info);
 
+    void connect();
+    void start();
+
     /**
      * @brief 设置目标电流或速度（取决于电调模式）。
      */
     awaitable<void> set(fp32 speed);
     awaitable<void> task();
-    awaitable<void> enable(){co_return ;}
+    awaitable<void> enable(){ enabled_ = true; co_return; }
+    void disable();
+    void set_enabled(bool enabled);
 
-    inline int16_t current()const{return current_;}
+    inline int16_t current() const {
+        return enabled_ && !offline() ? current_ : int16_t{0};
+    }
 private: 
     std::pair<uint16_t,uint16_t> can_pkg_id() const;
 private:
     friend dji_motor_group;
     info_type info_;
-    int16_t current_;
-    fp32 reduction_ratio_;
+    int16_t current_ {0};
+    fp32 reduction_ratio_ {1.0f};
     utils::linear_pid pid_;
+    bool connected_ {false};
+    bool started_ {false};
+    bool enabled_ {false};
 };
 
 static_assert(multiton_info<dji_motor::info_type>);
@@ -102,6 +112,8 @@ public:
      */
     dji_motor_group(info_type info);
 
+    void start();
+
     /**
      * @brief 与调度器协同的任务，负责读取反馈等。
      */
@@ -125,6 +137,7 @@ private:
 
     std::vector<dji_motor*> motors_;
     info_type info_;
+    bool started_ {false};
 };
 
 static_assert(multiton_info<dji_motor_group::info_type>);

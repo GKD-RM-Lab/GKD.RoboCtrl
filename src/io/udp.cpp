@@ -11,7 +11,13 @@ udp::udp(info_type info)
 {
     auto endpoint = asio::ip::udp::endpoint(asio::ip::make_address(info.address),info.port);
     socket_.connect(endpoint);
-    
+}
+
+void udp::start() {
+    if (started_) {
+        return;
+    }
+    started_ = true;
     roboctrl::spawn(task());
 }
 

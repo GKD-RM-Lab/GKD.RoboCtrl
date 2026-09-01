@@ -45,3 +45,11 @@ target("gkd-roboctrl")
     if is_mode("debug") then
         add_defines("DEBUG")
     end
+
+target("unit-tests")
+    set_default(false)
+    set_kind("binary")
+    add_files("tests/unit_tests.cpp", "src/device/base.cpp")
+    add_includedirs("include")
+    add_packages("asio")
+    add_options("type")

@@ -28,7 +28,7 @@ bool super_cap::init(const super_cap::info_type& info){
 
 roboctrl::awaitable<void> super_cap::set(bool enable,uint16_t power_limit)
 {
-    std::array<std::byte,8> data;
+    std::array<std::byte,8> data{};
 
     if(enable)
         data[0] = utils::to_byte(1);

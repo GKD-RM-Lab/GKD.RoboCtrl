@@ -6,10 +6,10 @@
 #pragma once
 
 #include <concepts>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <chrono>
-#include <cassert>
 #include <cmath>
 #include <numbers>
 #include <type_traits>
@@ -119,10 +119,19 @@ concept byte_container =
  */
 template<package T, byte_container C>
 T from_bytes(const C& bytes) {
-    assert(bytes.size() == sizeof(T));
-    T t;
+    if (bytes.size() != sizeof(T)) {
+        throw std::invalid_argument("byte buffer size does not match destination type");
+    }
+    T t{};
     std::memcpy(&t, bytes.data(), sizeof(T));
     return t;
+}
+
+template<package T>
+auto to_bytes(const T& t) -> std::array<std::byte, sizeof(T)> {
+    std::array<std::byte, sizeof(T)> bytes{};
+    std::memcpy(bytes.data(), &t, sizeof(T));
+    return bytes;
 }
 
 /**
@@ -138,7 +147,9 @@ requires requires(C& c) {
     { c.size() } -> std::convertible_to<std::size_t>;
 }
 void to_bytes(const T& t, C& container) {
-    assert(container.size() >= sizeof(T));
+    if (container.size() < sizeof(T)) {
+        throw std::invalid_argument("byte buffer is smaller than source type");
+    }
     std::memcpy(container.data(), &t, sizeof(T));
 }
 /**

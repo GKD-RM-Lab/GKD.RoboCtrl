@@ -42,9 +42,9 @@ public:
     inline uint8_t energy()const{return energy_;}
 private:
     info_type info_;
-    float chassis_power_;
-    uint16_t chassis_power_limit_;
-    uint8_t energy_;
+    float chassis_power_ {0.0f};
+    uint16_t chassis_power_limit_ {0};
+    uint8_t energy_ {0};
 };
 
 static_assert(utils::singleton<super_cap>);

@@ -11,6 +11,9 @@ bool shoot::init(const shoot::info_type& info)
 {
     info_ = info;
     friction_ramp_ = utils::ramp_f{info_.friction_params};
+    left_friction_motor_ = device::motor_ref::from<device::dji_motor>("left_friction");
+    right_friction_motor_ = device::motor_ref::from<device::dji_motor>("right_friction");
+    trigger_motor_ = device::motor_ref::from<device::dji_motor>("trigger");
     log_info("Shoot initiated");
 
     roboctrl::spawn(task());
@@ -28,15 +31,18 @@ roboctrl::awaitable<void> shoot::task()
 {
     while(true){
         if(roboctrl::get<robot>().state() == robot_state::NoForce){
-            co_await device::set_motor<device::dji_motor>("left_friction", 0);
-            co_await device::set_motor<device::dji_motor>("right_friction", 0);
-            co_await device::set_motor<device::dji_motor>("trigger", 0);
+            friction_ramp_.reset();
+            co_await left_friction_motor_.set(0);
+            co_await right_friction_motor_.set(0);
+            co_await trigger_motor_.set(0);
+            co_await roboctrl::wait_for(1ms);
+            continue;
         }
 
         friction_ramp_.update(firing_ ? info_.friction_max_speed : .0f);
 
-        co_await device::set_motor<device::dji_motor>("left_friction", -friction_ramp_.state());
-        co_await device::set_motor<device::dji_motor>("right_friction", friction_ramp_.state());
+        co_await left_friction_motor_.set(-friction_ramp_.state());
+        co_await right_friction_motor_.set(friction_ramp_.state());
         
         co_await roboctrl::wait_for(1ms);
     } 

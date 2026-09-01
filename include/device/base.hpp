@@ -52,7 +52,7 @@ public:
      * @return true 设备离线
      * @return false 设备在线
      */
-    bool offline() { return offline_timeout_ == 0ms?false:utils::now() - tick_time_ > offline_timeout_; }
+    bool offline() const { return offline_timeout_ == 0ms?false:utils::now() - tick_time_ > offline_timeout_; }
 
     /**
      * @brief 更新心跳时间

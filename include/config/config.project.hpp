@@ -57,6 +57,9 @@ namespace roboctrl::config{
         },
         .shoot_info{
 
-        }
+        },
+        .enable_chassis = true,
+        .enable_gimbal = false,
+        .enable_shoot = false
     };
 }

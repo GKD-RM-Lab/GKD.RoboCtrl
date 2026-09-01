@@ -5,9 +5,9 @@
 #include "linux/can.h"
 #include "utils/utils.hpp"
 #include <cstddef>
-#include <cstdlib>
 #include <stdexcept>
 #include <sys/socket.h>
+#include <unistd.h>
 
 using namespace roboctrl::io;
 
@@ -49,31 +49,39 @@ can::can(const can::info_type& info)
 
     struct ifreq ifr{};
     std::strncpy(ifr.ifr_name, can_name_.c_str(), IFNAMSIZ);
-    if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0)
+    if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0) {
+        ::close(fd);
         throw std::runtime_error("ioctl(SIOCGIFINDEX) failed");
+    }
 
     struct sockaddr_can addr{};
     addr.can_family = AF_CAN;
     addr.can_ifindex = ifr.ifr_ifindex;
-    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        ::close(fd);
         throw std::runtime_error("bind() failed");
+    }
 
     stream_.assign(fd);
 
-    cf_ = (::can_frame*)std::malloc(sizeof(::can_frame) + 8);
-
     log_info("Can io created on {}",info.can_name);
-    
-    roboctrl::spawn(task());
 }
 
-can::~can(){
-    std::free(cf_);
+void can::start() {
+    if (started_) {
+        return;
+    }
+    started_ = true;
+    roboctrl::spawn(task());
 }
 
 roboctrl::awaitable<void> can::task(){
     while(true){
         size_t pkg_size = co_await stream_.async_read_some(asio::buffer(buffer_),asio::use_awaitable);
+        if (pkg_size != sizeof(can_frame)) {
+            log_warn("drop malformed CAN frame with {} bytes", pkg_size);
+            continue;
+        }
         can_frame cf = utils::from_bytes<can_frame>(std::span{buffer_.data(),pkg_size});
 
         can_id_type id = cf.can_id;
@@ -86,7 +94,8 @@ roboctrl::awaitable<void> can::task(){
 }
 
 roboctrl::awaitable<void> can::send(byte_span frame){
-    co_await stream_.async_write_some(
+    co_await asio::async_write(
+        stream_,
         asio::buffer(frame.data(), frame.size()),
         asio::use_awaitable
     );
@@ -99,14 +108,16 @@ roboctrl::awaitable<void> can::send(can_id_type id, byte_span data) {
         throw std::invalid_argument("payload of can can't > 8");
     }
 
-    cf_->can_id = id;
-    cf_->can_dlc = data.size();
-    std::memcpy(cf_->data, data.data(), data.size());
+    can_frame frame{};
+    frame.can_id = id;
+    frame.can_dlc = static_cast<decltype(frame.can_dlc)>(data.size());
+    std::memcpy(frame.data, data.data(), data.size());
 
-    log_debug("send can frame: {}", *cf_);
+    log_debug("send can frame: {}", frame);
 
-    co_await stream_.async_write_some(
-        asio::buffer(cf_, sizeof(can_frame)),
+    co_await asio::async_write(
+        stream_,
+        asio::buffer(&frame, sizeof(frame)),
         asio::use_awaitable
     );
 }

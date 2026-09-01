@@ -24,7 +24,10 @@
 #include <memory>
 #include <mutex>
 #include <format>
+#include <functional>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "utils/concepts.hpp"
 #include "utils/singleton.hpp"
@@ -103,23 +106,62 @@ struct multiton_impl final :
     public utils::not_copyable_base {
 
     using key_type = typename owner_type::info_type::key_type;
-    
+
     static std::mutex mutex_;
     static std::unordered_map<key_type, std::unique_ptr<owner_type>> instances;
-    
+
     using info_type = typename owner_type::info_type;
 
-    static void init(const info_type& info){
+    static auto init(const info_type& info) -> owner_type& {
         std::lock_guard<std::mutex> lock{mutex_};
 
+        const auto key = info.key();
+        if (instances.contains(key)) {
+            throw std::runtime_error(std::format("duplicate multiton key {}", key));
+        }
+
         auto instance = std::make_unique<owner_type>(info);
-        owner_type& ret = *instance;
-        instances.emplace(info.key(), std::move(instance));
+        auto [it, inserted] = instances.emplace(key, std::move(instance));
+        if (!inserted) {
+            throw std::runtime_error(std::format("failed to register multiton key {}", key));
+        }
+        return *it->second;
+    }
+
+    static void init(std::initializer_list<info_type> infos) {
+        std::lock_guard<std::mutex> lock{mutex_};
+
+        std::unordered_set<key_type> pending_keys;
+        for (const auto& info : infos) {
+            const auto key = info.key();
+            if (instances.contains(key) || !pending_keys.emplace(key).second) {
+                throw std::runtime_error(std::format("duplicate multiton key {}", key));
+            }
+        }
+
+        std::vector<std::pair<key_type, std::unique_ptr<owner_type>>> pending;
+        pending.reserve(infos.size());
+        for (const auto& info : infos) {
+            pending.emplace_back(info.key(), std::make_unique<owner_type>(info));
+        }
+
+        for (auto& [key, instance] : pending) {
+            instances.emplace(std::move(key), std::move(instance));
+        }
     }
 
     [[nodiscard]]
     static bool contains(const key_type& key){
+        std::lock_guard<std::mutex> lock{mutex_};
         return instances.contains(key);
+    }
+
+    template<typename Fn>
+    static void for_each(Fn&& fn) {
+        std::lock_guard<std::mutex> lock{mutex_};
+        for (auto& [key, instance] : instances) {
+            std::invoke(fn, *instance);
+        }
     }
 
     [[nodiscard]]
@@ -212,10 +254,15 @@ inline auto init(const info_type& info) -> bool{
 
 template<info info_type>
 inline auto init(std::initializer_list<info_type> infos) -> bool{
-    for(auto info:infos)
-        if(!init(info))
-            return false;
-    
+    if constexpr (multiton_info<info_type>) {
+        details::impl_t<info_type>::init(infos);
+    } else {
+        for (const auto& info : infos) {
+            if (!init(info)) {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -263,12 +310,59 @@ inline auto desc(const descable auto& owner) -> std::string{
     return owner.desc();
 }
 
+template<owner owner_type, typename Fn>
+void for_each_instance(Fn&& fn){
+    details::multiton_impl<owner_type>::for_each(std::forward<Fn>(fn));
+}
+
+template<typename T>
+concept startable = requires(T& instance) {
+    { instance.start() } -> std::same_as<void>;
+};
+
 template<owner owner_type>
-auto instances(){
-    return details::multiton_impl<owner_type>::instances;
+    requires startable<owner_type>
+void start_all(){
+    for_each_instance<owner_type>([](owner_type& instance) {
+        instance.start();
+    });
+}
+
+template<typename T>
+concept connectable = requires(T& instance) {
+    { instance.connect() } -> std::same_as<void>;
+};
+
+template<owner owner_type>
+    requires connectable<owner_type>
+void connect_all(){
+    for_each_instance<owner_type>([](owner_type& instance) {
+        instance.connect();
+    });
 }
 
 }
+
+
+
+template<typename T>
+struct instance_ref{
+    static_assert(multiton::owner<T>, "T must be a multiton owner.");
+
+    using key_type = typename T::info_type::key_type;
+
+    key_type key;
+
+    explicit instance_ref(key_type key_) : key(std::move(key_)) {}
+
+    T& operator *() const {
+        return roboctrl::multiton::get<T>(key);
+    }
+
+    T* operator ->() const {
+        return &roboctrl::multiton::get<T>(key);
+    }
+};
 
 using namespace multiton;
 }

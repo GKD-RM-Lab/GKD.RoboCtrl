@@ -1,0 +1,42 @@
+name: Build and test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        type: [infantry, hero, sentry, project]
+        mode: [debug, release]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libc++-dev libc++abi-dev
+
+      - name: Set up Xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Configure
+        run: xmake f -m ${{ matrix.mode }} --type=${{ matrix.type }} -y
+
+      - name: Build
+        run: xmake build gkd-roboctrl -y
+
+      - name: Build unit tests
+        run: xmake build unit-tests -y
+
+      - name: Run unit tests
+        run: xmake run unit-tests

@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <sys/types.h>
 
 #include "device/motor/dji.h"
@@ -44,16 +45,22 @@ static std::string __motor_tyep_to_string(dji_motor::type type){
 dji_motor_group::dji_motor_group(dji_motor_group::info_type info):
     info_{info}
 {
-    std::fill(motors_.begin(),motors_.end(),nullptr);
     log_info("Dji Motor Group created on {}",info.can_name);
+}
+
+void dji_motor_group::start() {
+    if (started_) {
+        return;
+    }
+    started_ = true;
     roboctrl::spawn(task());
 }
 
 void dji_motor_group::register_motor(dji_motor* motor){
     for(auto m : motors_){
         if(m->can_pkg_id() == motor->can_pkg_id()){
-            log_error("motor id conflict:{} and {}",m->desc(),motor->desc());
-            return;
+            throw std::runtime_error(std::format(
+                "DJI command slot conflict between {} and {}", m->desc(), motor->desc()));
         }
     }
 
@@ -125,7 +132,34 @@ dji_motor::dji_motor(dji_motor::info_type info)
     pid_{info.pid_params},
     motor_base{2ms,info.radius}
 {
-    auto& group = roboctrl::get(dji_motor_group::info_type::make(info.can_name));
+    if (info.name.empty()) {
+        throw std::invalid_argument("DJI motor name must not be empty");
+    }
+    if (info.can_name.empty()) {
+        throw std::invalid_argument(std::format("DJI motor {} has no CAN dependency", info.name));
+    }
+    if (info.id < 1 || info.id > 8) {
+        throw std::invalid_argument(std::format("DJI motor {} has invalid id {}", info.name, info.id));
+    }
+    if (info.radius <= 0.0f) {
+        throw std::invalid_argument(std::format("DJI motor {} has invalid radius", info.name));
+    }
+    if (info.control_time <= std::chrono::steady_clock::duration::zero()) {
+        throw std::invalid_argument(std::format("DJI motor {} has invalid control period", info.name));
+    }
+
+    switch(info_.type_){
+        case dji_motor::M2006:
+            reduction_ratio_ = 1.f / 36.f;
+            break;
+        case dji_motor::M3508:
+            reduction_ratio_ = 1.f / 19.f;
+            break;
+        case dji_motor::M6020:
+            reduction_ratio_ = 1.f;
+            break;
+    }
+
     log_debug("Dji \"{}\" motor {} created on can \"{}\" with pid(p={},i={},d={},max iout={},max out={})",
         __motor_tyep_to_string(info.type_),
         info.name,
@@ -137,22 +171,27 @@ dji_motor::dji_motor(dji_motor::info_type info)
         info.pid_params.max_out
     );
 
+}
+
+void dji_motor::connect() {
+    if (connected_) {
+        return;
+    }
+
+    auto& group = roboctrl::get(dji_motor_group::info_type::make(info_.can_name));
     auto& can = roboctrl::get<io::can>(info_.can_name);
 
     uint16_t fallback_canid;
 
-    switch(info.type_){
+    switch(info_.type_){
         case dji_motor::M2006:
-            reduction_ratio_ = 1.f / 36.f;
-            fallback_canid = 0x200 + info.id;
+            fallback_canid = 0x200 + info_.id;
             break;
         case dji_motor::M3508:
-            reduction_ratio_ = 1.f / 19.f;
-            fallback_canid = 0x200 + info.id;
+            fallback_canid = 0x200 + info_.id;
             break;
         case dji_motor::M6020:
-            reduction_ratio_ = 1.f;
-            fallback_canid = 0x204 + info.id;
+            fallback_canid = 0x204 + info_.id;
             break;
     }
 
@@ -169,7 +208,32 @@ dji_motor::dji_motor(dji_motor::info_type info)
     });
 
     group.register_motor(this);
+    connected_ = true;
+}
+
+void dji_motor::start() {
+    if (!connected_) {
+        throw std::logic_error(std::format("DJI motor {} must be connected before start", info_.name));
+    }
+    if (started_) {
+        return;
+    }
+    started_ = true;
     roboctrl::spawn(task());
+}
+
+void dji_motor::disable() {
+    enabled_ = false;
+    current_ = 0;
+    pid_.clean();
+}
+
+void dji_motor::set_enabled(bool enabled) {
+    if (enabled) {
+        enabled_ = true;
+    } else {
+        disable();
+    }
 }
 
 roboctrl::awaitable<void> dji_motor::set(fp32 speed){ 
