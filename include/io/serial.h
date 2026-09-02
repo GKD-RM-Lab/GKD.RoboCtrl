@@ -53,6 +53,7 @@ public:
      */
     explicit serial(info_type info);
 
+    /** @brief 启动串口接收协程；重复调用不会重复启动。 */
     void start();
 
     /**
@@ -65,6 +66,7 @@ public:
      */
     awaitable<void> task();
 
+    /** @brief 返回包含逻辑名称、设备路径和波特率的可读描述。 */
     inline std::string desc()const{
         return std::format("serial port ({} on {} @ {}bps)",info_.name,info_.device,info_.baud_rate);
     }

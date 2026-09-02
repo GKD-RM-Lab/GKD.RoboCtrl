@@ -47,6 +47,7 @@ public:
 
     ~can() = default;
 
+    /** @brief 启动接收协程；重复调用不会重复启动。 */
     void start();
 
     /**
@@ -59,6 +60,7 @@ public:
      */
     awaitable<void> task();
 
+    /** @brief 返回包含逻辑名称和 Linux 接口名的可读描述。 */
     std::string desc()const{
         return std::format("bare can({} on {})",info_.name, info_.interface_name);
     }

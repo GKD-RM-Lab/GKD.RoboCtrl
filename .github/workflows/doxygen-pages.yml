@@ -31,9 +31,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y doxygen graphviz
 
+      - name: Show documentation tool versions
+        run: |
+          doxygen --version
+          dot -V
+
       - name: Generate Doxygen docs
         run: |
           doxygen Doxyfile
+
+      - name: Verify generated site
+        run: |
+          test -s docs/html/index.html
+          test -f docs/html/doxygen.css
+
+      - name: Verify generated site
+        run: |
+          test -s docs/html/index.html
+          test -f docs/html/annotated.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

@@ -43,6 +43,7 @@ public:
      */
     udp(info_type info);
 
+    /** @brief 启动 UDP 接收协程；重复调用不会重复启动。 */
     void start();
 
     /**
@@ -55,6 +56,7 @@ public:
      */
     awaitable<void> task();
 
+    /** @brief 返回 UDP 端点描述。 */
     inline std::string desc()const{
         return std::format("udp socket ({} to {}:{})",info_.key_,info_.address,info_.port);
     }

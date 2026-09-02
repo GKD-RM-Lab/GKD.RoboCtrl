@@ -1,3 +1,7 @@
+/**
+ * @file gimbal/base.hpp
+ * @brief 云台抽象接口与运行时注册表。
+ */
 #pragma once
 
 #include <any>
@@ -13,8 +17,10 @@
 namespace roboctrl::device {
 using namespace std::chrono_literals;
 
+/** @brief 云台的统一姿态目标接口。 */
 class gimbal_base {
 public:
+    /** @brief 云台初始化参数，包括 IMU、电机和角度限制。 */
     struct info_type {
         using owner_type = gimbal_base;
         std::string imu_key {"imu"};
@@ -27,24 +33,37 @@ public:
     };
 
     virtual ~gimbal_base() = default;
+    /** @brief 获取当前 yaw 姿态，单位 rad。 */
     virtual fp32 yaw() const = 0;
+    /** @brief 获取当前 pitch 姿态，单位 rad。 */
     virtual fp32 pitch() const = 0;
+    /** @brief 设置 yaw 绝对目标，单位 rad。 */
     virtual void set_target_yaw(fp32) = 0;
+    /** @brief 设置 pitch 绝对目标，单位 rad。 */
     virtual void set_target_pitch(fp32) = 0;
+    /** @brief 增加 yaw 目标量，单位 rad。 */
     virtual void add_yaw(fp32) = 0;
+    /** @brief 增加 pitch 目标量，单位 rad。 */
     virtual void add_pitch(fp32) = 0;
+    /** @brief 启用或禁用云台输出。 */
     virtual void set_enabled(bool) = 0;
 };
 
+/** @brief 判断类型是否实现云台抽象。 */
 template<typename T>
 concept gimbal = std::derived_from<T, gimbal_base>;
 
+/** @brief 具体云台实现的运行时工厂注册表。 */
 class gimbal_registry {
 public:
     using factory = std::function<gimbal_base*(const std::any&)>;
+    /** @brief 注册一个类型名及其工厂；重复类型名返回 false。 */
     static bool register_type(std::string type, factory creator);
+    /** @brief 按类型名创建并初始化云台。 */
     static gimbal_base* create(std::string_view type, const std::any& info);
+    /** @brief 获取当前已初始化的云台。 */
     static gimbal_base* current();
+    /** @brief 按类型名初始化当前云台。 */
     static bool init(std::string_view type, const std::any& info);
 };
 

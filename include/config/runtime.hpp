@@ -61,6 +61,11 @@ struct runtime_config {
 
 using configuration_result = std::expected<runtime_config, std::string>;
 
+/**
+ * @brief 校验已解析的运行时配置。
+ * @param config 待校验的配置对象；成功时按值返回，便于继续移动到初始化阶段。
+ * @return 通过校验的配置，或包含错误原因的 `std::unexpected`。
+ */
 inline configuration_result validate_runtime_configuration(runtime_config config) {
     if (config.schema_version != 1) {
         return std::unexpected("unsupported configuration schema_version: " +
@@ -86,6 +91,11 @@ inline configuration_result validate_runtime_configuration(runtime_config config
     return config;
 }
 
+/**
+ * @brief 读取整个文本文件。
+ * @param path 文件路径。
+ * @return 文件内容，或包含打开失败原因的 `std::unexpected`。
+ */
 inline std::expected<std::string, std::string> read_text_file(
     const std::filesystem::path& path)
 {
@@ -98,6 +108,11 @@ inline std::expected<std::string, std::string> read_text_file(
         std::istreambuf_iterator<char>{}};
 }
 
+/**
+ * @brief 从 YAML 或 JSON 文件加载并校验运行时配置。
+ * @param path 配置文件路径；扩展名必须为 `.yaml`、`.yml` 或 `.json`。
+ * @return 已解析且通过语义校验的配置，或包含解析/校验错误的 `std::unexpected`。
+ */
 inline configuration_result load_configuration(const std::filesystem::path& path) {
     const auto text = read_text_file(path);
     if (!text) return std::unexpected(text.error());
@@ -124,11 +139,20 @@ inline configuration_result load_configuration(const std::filesystem::path& path
     return std::unexpected("unsupported configuration extension: " + extension);
 }
 
+/**
+ * @brief 获取当前编译车型对应的默认配置路径。
+ * @return `configs/<BUILD_TYPE>.yaml`。
+ */
 inline std::filesystem::path default_configuration_path() {
     return std::filesystem::path{"configs"} /
            (std::string{TYPE_STR} + ".yaml");
 }
 
+/**
+ * @brief 将指定目录下的 YAML/JSON 配置按名称排序后打印到输出流。
+ * @param output 输出流。
+ * @param directory 要枚举的配置目录。
+ */
 inline void print_available_configurations(
     std::ostream& output,
     const std::filesystem::path& directory)

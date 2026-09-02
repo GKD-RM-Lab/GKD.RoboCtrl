@@ -1,3 +1,7 @@
+/**
+ * @file motion_control.h
+ * @brief 遥控输入到运动子系统的异步分发器。
+ */
 #pragma once
 
 #include <chrono>
@@ -13,8 +17,13 @@
 namespace roboctrl::ctrl {
 using namespace std::chrono_literals;
 
+/**
+ * @brief 将 ControlPad 输入映射到底盘、云台和可选发射器。
+ * @details 该对象是单例，周期任务运行在全局 Asio 事件循环中。
+ */
 class motion_control : public utils::singleton_base<motion_control>, public logable<motion_control> {
 public:
+    /** @brief 运动控制初始化参数。 */
     struct info_type {
         using owner_type = motion_control;
         std::string control_pad_key {"control_pad"};
@@ -22,7 +31,9 @@ public:
         bool enable_shoot {false};
     };
 
+    /** @brief 绑定控制器依赖并初始化运动控制。 */
     bool init(const info_type& info);
+    /** @brief 周期读取遥控器并分发控制命令。 */
     awaitable<void> task();
     std::string desc() const { return "motion control"; }
 

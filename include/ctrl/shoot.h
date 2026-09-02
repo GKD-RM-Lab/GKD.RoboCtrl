@@ -1,3 +1,7 @@
+/**
+ * @file shoot.h
+ * @brief 发射器和拨弹机构控制。
+ */
 #pragma once
 #include "utils/ramp.hpp"
 #include "utils/singleton.hpp"
@@ -17,6 +21,7 @@ using namespace std::chrono_literals;
 class shoot : public utils::singleton_base<shoot>,public logable<shoot> {
 public:
     shoot() = default;
+    /** @brief 发射器初始化参数。 */
     struct info_type{
         using owner_type = shoot;
 
@@ -35,14 +40,19 @@ public:
 
     inline std::string desc()const{return "shoot";}
 
+    /** @brief 周期更新摩擦轮和拨弹电机输出。 */
     roboctrl::awaitable<void> task();
 
+    /** @brief 绑定发射器所需电机并初始化内部状态。 */
     bool init(const info_type& info);
 
+    /** @brief 请求开始或停止拨弹。 */
     void set_firing(bool state);
     inline bool firing()const{return firing_;}
+    /** @brief 请求启用或停止摩擦轮。 */
     void set_friction_enabled(bool state);
     inline bool friction_enabled() const{return friction_enabled_;}
+    /** @brief 判断摩擦轮是否达到可发射的准备速度。 */
     [[nodiscard]] bool friction_ready() const;
 
 private:

@@ -11,12 +11,15 @@
 
 namespace roboctrl::device{ 
 
+/** @brief 以弧度表示的欧拉角快照。 */
 struct euler_angle { fp32 roll{}, pitch{}, yaw{}; };
+/** @brief 三轴物理量快照。 */
 struct three_axis { fp32 x{}, y{}, z{}; };
     
 /**
  * @brief IMU 三轴枚举，兼容姿态/加速度轴序。
  */
+/** @brief 三轴访问枚举。 */
 enum class axis : std::size_t {
     roll  = 0,
     pitch = 1,
@@ -29,6 +32,7 @@ enum class axis : std::size_t {
 /**
  * @brief IMU 基类，封装常见数据通道。
  */
+/** @brief IMU 的统一姿态、角速度和加速度接口。 */
 struct imu_base : public device_base {
 protected:
     three_axis acc_ {};

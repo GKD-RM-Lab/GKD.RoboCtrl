@@ -1,3 +1,7 @@
+/**
+ * @file robot.h
+ * @brief 机器人级状态与子系统生命周期编排。
+ */
 #pragma once
 
 #include <string>
@@ -16,6 +20,7 @@
 
 namespace roboctrl::ctrl{
 
+/** @brief 机器人控制状态。 */
 enum class robot_state{
     NoForce,
     FinishInit,
@@ -28,6 +33,7 @@ enum class robot_state{
 class robot : public utils::singleton_base<robot>,public logable<robot>{
 public:
     robot() = default;
+    /** @brief 机器人初始化参数及启用的子系统。 */
     struct info_type{
         using owner_type = robot;
         device::gimbal_base::info_type gimbal_info;
@@ -43,9 +49,11 @@ public:
         bool enable_shoot {false};
     };
 
+    /** @brief 创建具体底盘/云台并初始化控制子系统。 */
     bool init(const info_type& info);
     std::string desc()const{return "robot";}
 
+    /** @brief 运行机器人级状态机任务。 */
     roboctrl::awaitable<void> task();
     /** Return the configured chassis, or nullptr when the chassis is disabled. */
     device::chassis_base* chassis() noexcept { return chassis_; }
@@ -55,7 +63,9 @@ public:
     device::gimbal_base* gimbal() noexcept { return gimbal_; }
     const device::gimbal_base* gimbal() const noexcept { return gimbal_; }
 
+    /** @brief 获取当前机器人状态。 */
     robot_state state()const{return state_;}
+    /** @brief 设置当前机器人状态并更新输出使能。 */
     void set_state(robot_state state);
 private:
     robot_state state_ {robot_state::NoForce};

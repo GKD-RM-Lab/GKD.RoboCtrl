@@ -90,7 +90,16 @@ Release 相关、编译器优化敏感或准备合并的改动还应重复 `-m r
 
 `.github/workflows/build-test.yml` 在 Ubuntu 上对四种车型分别构建 Debug/Release，并运行单元测试。工作流中的 xmake 通用选项统一放在目标名之前（例如 `xmake build -y gkd-roboctrl`），兼容当前使用的 xmake 3.1.1。文档部署工作流监听默认分支 `master`。
 
-Doxygen 使用根目录 `Doxyfile`、`DoxygenLayout.xml` 和 `mainpage.dox`，把生成结果写入 `docs/html/`；该生成目录被忽略，`docs/*.md` 与 `docs/modules/*.md` 则进入版本控制。API 文档和 Agent 架构文档用途互补，公共 API 注释和对应模块文档都要随行为更新。
+Doxygen 使用根目录 `Doxyfile`、`DoxygenLayout.xml` 和 `mainpage.dox`，把 `include/`、`src/` 以及 `docs/` 中的 API/架构文档统一生成到 `docs/html/`；`docs/html/` 被忽略，`docs/*.md` 与 `docs/modules/*.md` 则进入版本控制。生成首页由 `mainpage.dox` 提供，包含构建命令、生命周期和模块导航；API 文档和 Agent 架构文档用途互补，公共 API 注释和对应模块文档都要随行为更新。
+
+本地生成 API 文档需要 Doxygen、Graphviz 和已初始化的 `doxygen-awesome-css` 子模块：
+
+```sh
+git submodule update --init --recursive
+doxygen Doxyfile
+```
+
+GitHub Actions 的 `doxygen-pages.yml` 会在 `master` 上自动生成并部署 GitHub Pages；文档生成不需要访问 CAN、串口或其他机器人硬件。
 
 主程序是 Linux SocketCAN/串口程序。无明确硬件环境和授权时只构建及运行单元测试，不运行 `gkd-roboctrl`。当前结果只能标记为“已构建/已测试”，不能替代实车或硬件在环验证。
 

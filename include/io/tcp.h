@@ -52,6 +52,7 @@ public:
      */
     tcp(asio::ip::tcp::socket socket, std::string key);
 
+    /** @brief 启动客户端接收协程；重复调用不会重复启动。 */
     void start();
 
     /**
@@ -67,6 +68,7 @@ public:
     /** @brief 注册连接关闭回调，仅触发一次。 */
     void on_close(std::function<void()> callback) { on_close_ = std::move(callback); }
 
+    /** @brief 返回客户端连接描述。 */
     inline std::string desc()const{
         return std::format("tcp socket (<{}> to {}:{})",info_.name,info_.address,info_.port);
     }
@@ -112,6 +114,7 @@ public:
      */
     explicit tcp_server(info_type info);
 
+    /** @brief 启动服务器监听协程；重复调用不会重复启动。 */
     void start();
 
     /**
@@ -133,6 +136,7 @@ public:
         on_connect_.add(std::move(callback));
     }
 
+    /** @brief 返回服务器监听描述。 */
     inline std::string desc()const{
         return std::format("tcp server (<{}> listening on {}:{})",info_.name,info_.address,info_.port);
     }

@@ -7,6 +7,7 @@
 
 namespace roboctrl::ctrl {
 
+/** @brief 已完成单位转换和解锁逻辑的控制层命令。 */
 struct control_command {
     vectorf velocity {};
     fp32 rotate_speed {};
@@ -21,11 +22,12 @@ struct control_command {
 };
 
 /**
- * @brief 将旧工程的键鼠/遥控映射转换为控制层语义。
+ * @brief 将遥控器快照映射为控制命令，并维护解锁状态。
  * @details 必须先完成双开关加滚轮的解锁手势，输出才可能为非零。
  */
 class control_mapper {
 public:
+    /** @brief 将一个遥控器输入快照转换为控制命令。 */
     control_command update(const device::control_pad_state& input) {
         constexpr std::int32_t key_d = 0x1;
         constexpr std::int32_t key_a = 0x2;
@@ -97,8 +99,10 @@ public:
         return command;
     }
 
+    /** @brief 返回是否已完成解锁手势。 */
     [[nodiscard]] bool armed() const noexcept { return armed_; }
 
+    /** @brief 清除解锁、按键边沿和摩擦轮状态。 */
     void reset() noexcept {
         armed_ = false;
         keyboard_mode_ = false;

@@ -21,6 +21,13 @@
 
 namespace roboctrl::config {
 
+/**
+ * @brief 检查一组 info_type 的 key 非空且唯一。
+ * @tparam Info 具备 `key_type` 和 `key()` 的配置类型。
+ * @param kind 错误信息中显示的对象类型。
+ * @param infos 待检查的配置集合。
+ * @throws std::invalid_argument key 为空或重复时抛出。
+ */
 template<typename Info>
 void validate_unique_keys(std::string_view kind, std::span<const Info> infos) {
     std::unordered_set<typename Info::key_type> keys;
@@ -42,6 +49,11 @@ void validate_unique_keys(std::string_view kind, std::initializer_list<Info> inf
     validate_unique_keys(kind, std::span{infos.begin(), infos.size()});
 }
 
+/**
+ * @brief 校验所有设备、控制器及其跨对象引用。
+ * @details 该函数只进行硬件访问前的静态校验，不打开 CAN、串口或其他设备。
+ * @throws std::invalid_argument 任意 key、引用、ID、槽位或控制参数非法时抛出。
+ */
 inline void validate_configuration(
     std::span<const io::can::info_type> cans,
     std::span<const io::serial::info_type> serials,

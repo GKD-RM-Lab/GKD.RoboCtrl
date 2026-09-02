@@ -1,22 +1,67 @@
 /**
-* @mainpage
-*
-* @section intro_sec 简介
-* 这是GKD电控代码的文档。电控的核心逻辑包括三大板块：底盘，云台和发射器；除此之外，电控代码还包含各个电机的控制逻辑、IO等等。
-* @section compile_sec 编译说明
-* 电控代码使用 xmake 进行编译，请自行安装xmake。安装完成后，进入代码目录，执行下面的命令进行编译：
-* 
-* ```shell
-* xmake build
-* ```
-*
-* 然后使用下面的命令运行：
-* 
-* ```shell
-* xmake run
-* ```
-* @section module_sec 模块
-* 你可以从下面的页面入手电控代码：
-* - 多例模块 : @ref roboctrl::multiton
-* - 日志模块 : @ref roboctrl::logger
-*/
+ * @mainpage GKD.RoboCtrl 电控 API
+ *
+ * @section intro_sec 项目简介
+ *
+ * GKD.RoboCtrl 是面向 RoboMaster 机器人的 Linux 电控程序，使用 C++23、
+ * Asio 协程和 xmake，将通信、设备驱动与机器人控制分层组织。程序采用单线程
+ * 异步模型：IO 负责字节传输与分发，Device 负责协议解释和物理量，Control
+ * 负责机器人行为，Core/Utils 提供事件循环、实例管理、日志和通用算法。
+ *
+ * @section architecture_sec 架构与生命周期
+ *
+ * 依赖方向保持为：
+ *
+ * @code{.text}
+ * utils/core -> io -> device -> ctrl
+ *                         ^
+ *                       config 组装具体实例
+ * @endcode
+ *
+ * 启动阶段依次执行配置预检、对象构造、跨对象 connect、控制器 init、IO/task
+ * 启动，最后进入唯一的 Asio 事件循环。构造函数不应抢先启动长期协程；多例对象
+ * 由 key 管理并在进程生命周期内保持稳定引用。
+ *
+ * 详见生成站点中的 `docs/architecture.md` 页面。
+ *
+ * @section quickstart_sec 构建与无硬件测试
+ *
+ * 需要 LLVM、libc++、xmake 以及项目声明的 Asio、cxxopts、reflect-cpp 依赖。
+ * 选择车型后构建主程序和单元测试：
+ *
+ * @code{.sh}
+ * xmake f -y -m debug --type=project
+ * xmake build -y gkd-roboctrl
+ * xmake build -y unit-tests
+ * xmake run unit-tests
+ * @endcode
+ *
+ * 主程序会访问 Linux SocketCAN、串口并向电机发送报文；没有硬件授权时不要
+ * 使用 xmake run gkd-roboctrl。四车型 Debug/Release 构建由
+ * `.github/workflows/build-test.yml` 自动执行。
+ *
+ * @section module_sec 模块导航
+ *
+ * - 异步上下文：@ref roboctrl::async::task_context
+ * - 多例与实例生命周期：@ref roboctrl::multiton
+ * - 日志：@ref roboctrl::logger
+ * - IO 抽象与解析器：@ref roboctrl::io::bare_io_base
+ * - 设备基类与离线状态：@ref roboctrl::device::device_base
+ * - 电机运行时多态：@ref roboctrl::device::motor_base
+ * - 机器人状态编排：@ref roboctrl::ctrl::robot
+ * - 配置与校验：@ref roboctrl::config::runtime_config
+ *
+ * 设计约束、配置字段和验证边界见生成站点中的 `docs/modules/config-build.md` 页面。
+ *
+ * @section docs_sec 开发文档
+ *
+ * - 总体架构：`docs/architecture.md`
+ * - Core：`docs/modules/core.md`
+ * - IO：`docs/modules/io.md`
+ * - Device：`docs/modules/device.md`
+ * - Control：`docs/modules/control.md`
+ * - Utils：`docs/modules/utils.md`
+ * - 配置、构建与 CI：`docs/modules/config-build.md`
+ * - 开发流程：`docs/development.md`
+ * - GKD_Control 迁移记录：`docs/migration-gkd-control.md`
+ */

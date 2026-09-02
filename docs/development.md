@@ -73,6 +73,15 @@ find docs -type f -name '*.md' -print
 rg -n '\[[^]]+\]\([^)]*\.md[^)]*\)' AGENTS.md docs
 ```
 
+涉及公共 API、模块入口或 Doxygen 配置时，还应在安装 Doxygen/Graphviz 且子模块已初始化的环境中执行：
+
+```sh
+git submodule update --init --recursive
+doxygen Doxyfile
+```
+
+生成结果位于 `docs/html/`，该目录不提交；应确认 Doxygen 首页能访问架构、模块和构建文档，且没有因新增注释或 `@ref` 导致的文档错误。
+
 最后人工确认每个相对链接目标存在，成熟度描述与当前 `.cpp`、入口和配置一致。
 
 ## 运行与硬件安全
