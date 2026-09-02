@@ -18,26 +18,27 @@
 #include "core/async.hpp"
 #include "io/base.hpp"
 #include "utils/callback.hpp"
+#include "io/write_queue.hpp"
 
 namespace roboctrl::io{
 
 /**
  * @brief TCP 客户端套接字。
  */
-class tcp : public bare_io_base{
+class tcp : public bare_io_base, public std::enable_shared_from_this<tcp>{
 public:
     /**
      * @brief TCP 连接参数。
      */
     struct info_type{
-        using key_type = std::string_view;
+        using key_type = std::string;
         using owner_type = tcp;
 
         std::string name;       ///< TCP 连接名称
         std::string address;    ///< TCP 连接地址
         std::uint16_t port;     ///< TCP 端口
 
-        std::string_view key()const{
+        const std::string& key()const{
             return name;
         }
     };
@@ -63,15 +64,23 @@ public:
      */
     awaitable<void> task();
 
+    /** @brief 注册连接关闭回调，仅触发一次。 */
+    void on_close(std::function<void()> callback) { on_close_ = std::move(callback); }
+
     inline std::string desc()const{
         return std::format("tcp socket (<{}> to {}:{})",info_.name,info_.address,info_.port);
     }
 
 private:
     asio::ip::tcp::socket socket_;
+    write_queue write_queue_;
     info_type info_;
     std::array<std::byte,1024> buffer_;
     bool started_ {false};
+    std::function<void()> on_close_;
+    bool closed_notified_ {false};
+
+    void notify_closed();
 };
 
 static_assert(bare_io<tcp>);
@@ -86,14 +95,14 @@ public:
      * @brief 服务器初始化参数。
      */
     struct info_type{
-        using key_type = std::string_view;
+        using key_type = std::string;
         using owner_type = tcp_server;
 
         std::string name;                   ///< 服务器名称
         std::string address;                ///< 监听地址
         std::uint16_t port;                 ///< 监听端口
 
-        std::string_view key()const{
+        const std::string& key()const{
             return name;
         }
     };
@@ -102,6 +111,8 @@ public:
      * @brief 构造监听器并立即开始监听。
      */
     explicit tcp_server(info_type info);
+
+    void start();
 
     /**
      * @brief 接受连接的长任务。
@@ -133,5 +144,8 @@ private:
     info_type info_;
     callback<std::shared_ptr<tcp>> on_connect_;
     std::vector<std::shared_ptr<tcp>> connections_;
+    bool started_ {false};
+
+    void remove_connection(const std::shared_ptr<tcp>& connection);
 };
 }

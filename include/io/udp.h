@@ -8,10 +8,12 @@
 #include <format>
 #include <string_view>
 #include <span>
+#include <string>
 
 #include "core/async.hpp"
 #include "io/base.hpp"
 #include "core/logger.h"
+#include "io/write_queue.hpp"
 
 namespace roboctrl::io{
 
@@ -24,14 +26,14 @@ public:
      * @brief UDP 初始化参数。
      */
     struct info_type{
-        using key_type = std::string_view;
+        using key_type = std::string;
         using owner_type = udp;
 
-        std::string_view key_;
-        std::string_view address;
-        int port;
+        std::string key_;
+        std::string address;
+        std::uint16_t port;
 
-        std::string_view key()const{
+        const std::string& key()const{
             return key_;
         }
     };
@@ -59,8 +61,9 @@ public:
 
 private:
   asio::ip::udp::socket socket_;
+  write_queue write_queue_;
   info_type info_;
-  std::array<std::byte,1024> buffer_;
+  std::array<std::byte,65536> buffer_;
   bool started_ {false};
 };
 

@@ -129,6 +129,23 @@ void test_combined_parser() {
     assert(parser.parse(bytes) == 0);
 }
 
+struct fake_keyed_io : roboctrl::io::keyed_io_base<std::uint8_t> {
+    using roboctrl::io::keyed_io_base<std::uint8_t>::on_data;
+};
+
+void test_keyed_io_rejects_conflicting_sizes() {
+    fake_keyed_io io;
+    io.on_data(1, [](roboctrl::io::byte_span) {}, 2);
+
+    bool threw = false;
+    try {
+        io.on_data(1, [](roboctrl::io::byte_span) {}, 3);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    assert(threw);
+}
+
 void test_chassis_speed_limit() {
     const auto wheels = roboctrl::utils::kinematics::inverse_mecanum(
         {.x = 10.0f, .y = -4.0f}, 0.3f, 2.5f);
@@ -287,6 +304,7 @@ int main() {
     test_motor_base_runtime_polymorphism();
     test_multiton_rejects_duplicate_before_construction();
     test_combined_parser();
+    test_keyed_io_rejects_conflicting_sizes();
     test_chassis_speed_limit();
     test_device_input_abstractions();
     test_control_chain_and_explicit_dt();

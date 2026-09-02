@@ -7,6 +7,7 @@
 
 #include <concepts>
 #include <functional>
+#include <exception>
 #include <type_traits>
 #include <tuple>
 #include <vector>
@@ -46,7 +47,15 @@ public:
         roboctrl::spawn(
             [fns = std::move(fns), call_args = std::move(call_args)]() mutable -> awaitable<void> {
                 for (auto& fn : fns) {
-                    co_await std::apply(fn, call_args);
+                    try {
+                        co_await std::apply(fn, call_args);
+                    } catch (const std::exception& error) {
+                        logger::instance().log_error(
+                            "callback failed: {}", error.what());
+                    } catch (...) {
+                        logger::instance().log_error(
+                            "callback failed with an unknown exception");
+                    }
                 }
             }()
         );

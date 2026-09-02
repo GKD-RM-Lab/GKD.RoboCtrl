@@ -9,6 +9,7 @@ Core 提供所有上层模块共享的运行时基础：单线程异步上下文
 `task_context` 是 `asio::io_context` 的单例包装，主要接口包括：
 
 - `spawn(awaitable<void>)`：通过 `asio::co_spawn` 注册协程，未捕获异常会记录并停止事件循环。
+- `callback`：回调内部会逐个隔离并记录异常；只有越过任务边界的未捕获异常才会触发上述事件循环停止策略。
 - `post(fn, args...)`：把普通可调用对象放入事件队列。
 - `run()` / `stop()`：启动或停止全局事件循环。
 - `wait_for(duration)`：使用 `steady_timer` 挂起当前协程。

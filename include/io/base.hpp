@@ -23,6 +23,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <utility>
 
 #include "core/async.hpp"
@@ -33,14 +34,14 @@
 namespace roboctrl::io{
 
 /**
- * @brief 数据指针，实际上是一个std::shared_ptr<std::vector<std::byte>>;
+ * @brief 只读共享数据缓冲。
  */
-using data_ptr = std::shared_ptr<std::vector<std::byte>>;
+using data_ptr = std::shared_ptr<const std::vector<std::byte>>;
 
 /**
- * @brief byte span，实际上就是一个std::span<std::byte>;
+ * @brief 只读 byte span。
  */
-using byte_span = std::span<std::byte>;
+using byte_span = std::span<const std::byte>;
 
 /**
  * @brief 将任意满足 byte_container 的数据拷贝到共享缓冲。
@@ -126,7 +127,15 @@ public:
      * @brief 注册指定 key 的回调。
      */
     void on_data(const TK& key,callback_fn<byte_span> auto fn,size_t size = 0){
-        sizes_[key] = size;
+        const auto [size_it, inserted] = sizes_.try_emplace(key, size);
+        if (!inserted) {
+            if (size_it->second != 0 && size != 0 && size_it->second != size) {
+                throw std::invalid_argument("conflicting payload sizes registered for IO key");
+            }
+            if (size_it->second == 0) {
+                size_it->second = size;
+            }
+        }
         callbacks_[key].add([fn](data_ptr data) mutable -> auto{
             return fn(std::span{data->data(),data->size()});
         });

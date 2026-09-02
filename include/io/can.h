@@ -12,6 +12,7 @@
 #include "base.hpp"
 #include "core/async.hpp"
 #include "core/logger.h"
+#include "write_queue.hpp"
 
 namespace roboctrl::io{
 
@@ -49,11 +50,6 @@ public:
     void start();
 
     /**
-     * @brief 发送裸帧。
-     */
-    awaitable<void> send(byte_span data);
-
-    /**
      * @brief 发送带 CAN ID 的帧。
      */
     awaitable<void> send(can_id_type id,byte_span data);
@@ -69,9 +65,12 @@ public:
 
 private:
     asio::posix::stream_descriptor stream_;
+    write_queue write_queue_;
     info_type info_;
     std::array<std::byte,20> buffer_;
     std::string interface_name_;
     bool started_ {false};
 };
+
+static_assert(keyed_io<can>);
 }
