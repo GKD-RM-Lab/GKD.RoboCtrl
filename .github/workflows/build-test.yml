@@ -30,13 +30,13 @@ jobs:
           xmake-version: latest
 
       - name: Configure
-        run: xmake f -m ${{ matrix.mode }} --type=${{ matrix.type }} -y
+        run: xmake f -y -m ${{ matrix.mode }} --type=${{ matrix.type }}
 
       - name: Build
-        run: xmake build gkd-roboctrl -y
+        run: xmake build -y gkd-roboctrl
 
       - name: Build unit tests
-        run: xmake build unit-tests -y
+        run: xmake build -y unit-tests
 
       - name: Run unit tests
         run: xmake run unit-tests

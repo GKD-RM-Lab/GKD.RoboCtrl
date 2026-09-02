@@ -88,7 +88,7 @@ done
 
 Release 相关、编译器优化敏感或准备合并的改动还应重复 `-m release`。不要用循环运行主程序。
 
-`.github/workflows/build-test.yml` 的目标是在 Ubuntu 上对四种车型分别构建 Debug/Release，并运行单元测试。但当前 diff 把通用选项写在目标名之后（`xmake build gkd-roboctrl -y`），xmake 3.1.1 会把 `-y` 当作目标名；在改成 `xmake build -y gkd-roboctrl` 等正确顺序前，不能把该工作流标记为已验证可用。文档部署监听默认分支 `master`。
+`.github/workflows/build-test.yml` 在 Ubuntu 上对四种车型分别构建 Debug/Release，并运行单元测试。工作流中的 xmake 通用选项统一放在目标名之前（例如 `xmake build -y gkd-roboctrl`），兼容当前使用的 xmake 3.1.1。文档部署工作流监听默认分支 `master`。
 
 Doxygen 使用根目录 `Doxyfile`、`DoxygenLayout.xml` 和 `mainpage.dox`，把生成结果写入 `docs/html/`；该生成目录被忽略，`docs/*.md` 与 `docs/modules/*.md` 则进入版本控制。API 文档和 Agent 架构文档用途互补，公共 API 注释和对应模块文档都要随行为更新。
 
