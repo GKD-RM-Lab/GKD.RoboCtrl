@@ -1,20 +1,17 @@
-#include "device/gimbal.hpp"
+#include "device/gimbal/gkd_sentry_gimbal.hpp"
 #include "core/async.hpp"
 #include "device/imu/base.hpp"
 #include "device/imu/serial_imu.hpp"
 #include "utils/utils.hpp"
-#include <any>
-#include <mutex>
-#include <unordered_map>
-#include <utility>
 
 using namespace roboctrl;
 using namespace roboctrl::device;
 
-ROBOCTRL_REGISTER_GIMBAL("device.standard_imu_2axis_gimbal.v1", roboctrl::device::imu_gimbal);
-ROBOCTRL_REGISTER_GIMBAL("ctrl.standard_imu_2axis_gimbal.v1", roboctrl::device::imu_gimbal);
+ROBOCTRL_REGISTER_GIMBAL("device.gkd_sentry_gimbal.v1", roboctrl::device::gkd_sentry_gimbal);
+ROBOCTRL_REGISTER_GIMBAL("device.standard_imu_2axis_gimbal.v1", roboctrl::device::gkd_sentry_gimbal);
+ROBOCTRL_REGISTER_GIMBAL("ctrl.standard_imu_2axis_gimbal.v1", roboctrl::device::gkd_sentry_gimbal);
 
-roboctrl::awaitable<void> imu_gimbal::task(){
+roboctrl::awaitable<void> gkd_sentry_gimbal::task(){
     while(true){
         auto& imu = roboctrl::get<serial_imu>(imu_key_);
         const bool unavailable = imu.offline() || yaw_motor_->offline() || pitch_motor_->offline();
@@ -57,7 +54,7 @@ roboctrl::awaitable<void> imu_gimbal::task(){
     }
 }
 
-bool imu_gimbal::init(const info_type& info){
+bool gkd_sentry_gimbal::init(const info_type& info){
     imu_key_ = info.imu_key;
     yaw_motor_ = &roboctrl::get<dji_motor>(info.yaw_motor_key);
     pitch_motor_ = &roboctrl::get<dji_motor>(info.pitch_motor_key);
@@ -71,41 +68,4 @@ bool imu_gimbal::init(const info_type& info){
     log_info("Gimbal initiated");
     roboctrl::spawn(task());
     return true;
-}
-
-namespace {
-std::unordered_map<std::string, gimbal_registry::factory>& gimbal_factories() {
-    static std::unordered_map<std::string, gimbal_registry::factory> value;
-    return value;
-}
-std::mutex& gimbal_factories_mutex() { static std::mutex mutex; return mutex; }
-roboctrl::device::gimbal_base*& current_gimbal() { static roboctrl::device::gimbal_base* value = nullptr; return value; }
-}
-
-bool gimbal_registry::register_type(std::string type, factory creator) {
-    std::lock_guard lock{gimbal_factories_mutex()};
-    return gimbal_factories().emplace(std::move(type), std::move(creator)).second;
-}
-
-gimbal_base* gimbal_registry::current() { return current_gimbal(); }
-
-gimbal_base* gimbal_registry::create(std::string_view type, const std::any& info) {
-    factory creator;
-    {
-        std::lock_guard lock{gimbal_factories_mutex()};
-        auto it = gimbal_factories().find(std::string{type});
-        if (it == gimbal_factories().end()) return nullptr;
-        creator = it->second;
-    }
-    return creator(info);
-}
-
-bool gimbal_registry::init(std::string_view type, const imu_gimbal::info_type& info) {
-    return init(type, std::any{info});
-}
-
-bool gimbal_registry::init(std::string_view type, const std::any& info) {
-    auto* result = create(type, info);
-    current_gimbal() = result;
-    return result != nullptr;
 }

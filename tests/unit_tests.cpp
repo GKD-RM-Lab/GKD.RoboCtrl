@@ -295,6 +295,14 @@ void test_runtime_configuration_files() {
         assert(config->schema_version == 1);
         assert(!config->cans.empty());
         assert(!config->dji_motors.empty());
+        if (std::string_view{path} == "configs/sentry.yaml") {
+            assert(config->cans.size() == 3);
+            assert(config->serials.size() == 2);
+            assert(config->dji_motors.size() == 11);
+            assert(config->robot.enable_chassis);
+            assert(config->robot.enable_gimbal);
+            assert(config->robot.enable_shoot);
+        }
     }
 }
 

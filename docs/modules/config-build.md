@@ -6,15 +6,15 @@
 
 ## 车型配置
 
-`xmake f --type=<infantry|hero|sentry|project>` 选择默认文件 `configs/<type>.yaml`。四份 YAML 都直接组合 CAN、串口、DJI 电机、ControlPad、IMU 和 Robot 的既有 `info_type`；Project/Sentry 当前只启用底盘控制，Infantry/Hero 同时声明云台与发射。车型参数只维护在运行时 YAML 中，避免同一配置存在两份来源。
+`xmake f --type=<infantry|hero|sentry|project>` 选择默认文件 `configs/<type>.yaml`。四份 YAML 都直接组合 CAN、串口、DJI 电机、ControlPad、IMU 和 Robot 的既有 `info_type`；Project 当前只启用底盘控制，Infantry/Hero/Sentry 同时声明云台与发射。Sentry 配置还保留旧工程副云台电机拓扑，但当前运行时只绑定一个主云台实例。车型参数只维护在运行时 YAML 中，避免同一配置存在两份来源。
 
-底盘配置声明四个电机 key 与 2 ms 控制周期；Infantry/Hero 的 Gimbal 声明 IMU/电机 key、角度 PID 和 1 ms 周期，Shoot 声明摩擦轮斜坡、最大速度与车型相关的拨弹速度。配置预检会验证这些 key、方向、范围和周期。
+底盘配置声明四个电机 key、控制周期和底盘最高旋转速度 `max_rotate_speed`；Infantry/Hero/Sentry 的 Gimbal 声明 IMU/电机 key、角度 PID 和 1 ms 周期，Shoot 声明摩擦轮斜坡、最大速度与车型相关的拨弹速度。配置预检会验证这些 key、方向、范围和周期。
 
 | 类型 | CAN | 串口设备 | 电机集合 | 启用控制 |
 | --- | --- | --- | --- | --- |
 | `infantry` | `can0`、`can1` | `/dev/IMU_HERO` | 4 底盘 + 2 云台 + 2 摩擦轮 + 1 拨弹 | chassis、gimbal、shoot |
 | `hero` | `CAN_CHASSIS`、`CAN_GIMBAL` | `/dev/IMU_HERO` | 4 底盘 + 2 云台 + 2 摩擦轮 + 1 拨弹 | chassis、gimbal、shoot |
-| `sentry` | `CAN_CHASSIS` | `/dev/IMU_SENTRY` | 4 底盘 | chassis |
+| `sentry` | `CAN_CHASSIS`、`CAN_BULLET`、`CAN_GIMBAL` | `/dev/IMU_BIG_YAW`、`/dev/IMU_SMALL_YAW` | 4 底盘 + 4 主/副云台 + 2 摩擦轮 + 1 拨弹 | chassis、gimbal、shoot |
 | `project` | `CAN_CHASSIS` | `/dev/IMU_HERO` | 4 底盘 | chassis |
 
 这些名称是当前源码配置，不保证部署机器已经创建同名 SocketCAN 接口或串口软链接。修改任何名称时需全仓检索引用，并在目标主机上独立验证 udev/网络配置。

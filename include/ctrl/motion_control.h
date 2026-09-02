@@ -5,9 +5,9 @@
 
 #include "core/async.hpp"
 #include "ctrl/control_mapping.hpp"
-#include "device/chassis.hpp"
+#include "device/chassis/base.hpp"
 #include "device/controlpad.h"
-#include "device/gimbal.hpp"
+#include "device/gimbal/base.hpp"
 #include "utils/singleton.hpp"
 
 namespace roboctrl::ctrl {

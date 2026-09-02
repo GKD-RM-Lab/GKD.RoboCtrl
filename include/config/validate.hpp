@@ -134,8 +134,9 @@ inline void validate_configuration(
         require_motor(robot.chassis_info.right_front_motor, "chassis");
         require_motor(robot.chassis_info.left_rear_motor, "chassis");
         require_motor(robot.chassis_info.right_rear_motor, "chassis");
-        if (robot.chassis_info.control_time <= std::chrono::steady_clock::duration::zero()) {
-            throw std::invalid_argument("chassis has non-positive control period");
+        if (robot.chassis_info.control_time <= std::chrono::steady_clock::duration::zero() ||
+            robot.chassis_info.max_rotate_speed <= 0.0f) {
+            throw std::invalid_argument("chassis has invalid control parameters");
         }
     }
     if (robot.enable_gimbal) {

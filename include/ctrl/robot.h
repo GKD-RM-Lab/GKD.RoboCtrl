@@ -6,9 +6,9 @@
 #include "ctrl/control_mapping.hpp"
 #include "ctrl/motion_control.h"
 #include "ctrl/shoot.h"
-#include "device/chassis.hpp"
+#include "device/chassis/base.hpp"
 #include "device/controlpad.h"
-#include "device/gimbal.hpp"
+#include "device/gimbal/base.hpp"
 #include "utils/singleton.hpp"
 #include "utils/utils.hpp"
 
@@ -28,8 +28,8 @@ public:
     robot() = default;
     struct info_type{
         using owner_type = robot;
-        device::imu_gimbal::info_type gimbal_info;
-        device::mecanum_chassis::info_type chassis_info;
+        device::gimbal_base::info_type gimbal_info;
+        device::chassis_base::info_type chassis_info;
         shoot::info_type shoot_info;
         /// 配置选择的具体底盘类；当前仅实现标准麦轮底盘。
         std::string chassis_type {"ctrl.standard_mecanum_chassis.v1"};
@@ -45,17 +45,13 @@ public:
     std::string desc()const{return "robot";}
 
     roboctrl::awaitable<void> task();
-    inline void set_velocity(fp32 x,fp32 y){
-        if (chassis_) chassis_->set_planar_velocity({x,y});
-    }
-    inline void set_velocity(vectorf velocity){
-        if (chassis_) chassis_->set_velocity(velocity);
-    }
+    /** Return the configured chassis, or nullptr when the chassis is disabled. */
+    device::chassis_base* chassis() noexcept { return chassis_; }
+    const device::chassis_base* chassis() const noexcept { return chassis_; }
 
-    inline vectorf velocity()const{return chassis_ ? chassis_->velocity() : vectorf{};}
-
-    inline void set_chassis_rotate_speed(fp32 speed){if (chassis_) chassis_->set_rotate_speed(speed);}
-    inline fp32 chassis_rotate_speed()const{return chassis_ ? chassis_->rotate_speed() : 0.0f;}
+    /** Return the configured gimbal, or nullptr when the gimbal is disabled. */
+    device::gimbal_base* gimbal() noexcept { return gimbal_; }
+    const device::gimbal_base* gimbal() const noexcept { return gimbal_; }
 
     robot_state state()const{return state_;}
     void set_state(robot_state state);

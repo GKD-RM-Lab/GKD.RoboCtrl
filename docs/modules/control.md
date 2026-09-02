@@ -10,7 +10,7 @@ Control 层组合设备引用并表达整机行为。它不解析总线报文。
 
 `robot::info_type` 分别声明是否启用底盘、云台和发射，并含 `chassis_type`、`gimbal_type` 类型契约。初始化通过 `device::chassis_registry`、`device::gimbal_registry` 选择具体实现，并保存抽象指针；Robot 不再硬编码具体底盘/云台类型。状态切换会统一禁用或启用所有 DJI 电机；这只是软件安全门，不能替代硬件急停和台架验证。
 
-`robot_state` 当前包含 `NoForce`、`FinishInit`、`FollowGimbal`、`Search`、`Idle`、`NotFollow`。双开关置下且俯仰拨轮为 `-660` 时从 `NoForce` 进入 `FollowGimbal`；ControlPad 连续 100 ms 无有效报文时回到 `NoForce`。其他枚举状态仍没有完整转移规则。`robot` 仅保留面向抽象底盘的兼容转发接口；调用这些接口前必须确认对应子系统在当前车型启用。
+`robot_state` 当前包含 `NoForce`、`FinishInit`、`FollowGimbal`、`Search`、`Idle`、`NotFollow`。双开关置下且俯仰拨轮为 `-660` 时从 `NoForce` 进入 `FollowGimbal`；ControlPad 连续 100 ms 无有效报文时回到 `NoForce`。其他枚举状态仍没有完整转移规则。`chassis()` 和 `gimbal()` 返回当前配置的非拥有型抽象指针，未启用时返回 `nullptr`；控制逻辑应通过这两个接口访问底盘和云台，不再经过 Robot 的旧转发函数。
 
 切换到 `NoForce` 会调用每台 DJI 电机的 `disable()`，清空 PID、当前输出并关闭 `enabled_`；切换到任意其他枚举值会使能电机。键鼠映射保留旧工程的 WASD、R 自旋切换、F 摩擦轮切换、鼠标云台与开火；遥控映射保留通道缩放、S1 自旋、S2 摩擦轮和滚轮开火。所有非零命令都受解锁门限制。
 
@@ -44,7 +44,7 @@ Gimbal 初始化会绑定 IMU、yaw/pitch 电机和两个角度 PID。第一组�
 
 ## 控制参数与单位
 
-- `robot::set_velocity(x, y)` 与底盘轮速上限使用的最终单位需由机械和电机半径标定确认；代码以 `motor_base::linear_speed()` 的 m/s 语义设计。
+- `robot::chassis()->set_planar_velocity(...)` 与底盘轮速上限使用的最终单位需由机械和电机半径标定确认；代码以 `motor_base::linear_speed()` 的 m/s 语义设计。
 - 云台 yaw/pitch 目标和 PID 使用 rad。
 - `rotate_speed` 直接参与轮速合成，当前未乘几何半径；其比例含义需通过底盘模型/标定固定。
 - 控制周期由配置给出，底盘、云台、发射和电机 PID 通过显式 `dt` 更新；参数仍需结合实际周期和硬件反馈标定。

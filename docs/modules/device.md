@@ -65,9 +65,11 @@ DJI 反馈仍按固定 8 字节 packed 结构解释，外部协议的端序与�
 
 ## Chassis 与 Gimbal 抽象
 
-`device::chassis_base` 只表达平面速度和旋转速度：可以一次设置 `(x, y, z)`，也可以分别更新平面 `x`、`y` 或旋转分量。麦轮逆运动学位于 `utils::kinematics::inverse_mecanum()`，具体底盘负责电机绑定、PID 和速度下发，不读取云台状态。
+`device::chassis_base` 只表达平面速度和旋转速度：可以一次设置 `(x, y, z)`，也可以分别更新平面 `x`、`y` 或旋转分量。其 `info_type` 保存四个轮子电机 key、控制周期和底盘最高旋转速度；麦轮逆运动学位于 `utils::kinematics::inverse_mecanum()`，具体底盘负责电机绑定、PID 和速度下发，不读取云台状态。
 
 `device::gimbal_base` 至少拆分 yaw、pitch 的目标/增量命令；具体云台负责姿态反馈、角度 PID 和电机速度输出。底盘跟随云台、坐标系策略和遥控器映射属于 `ctrl` 的后台控制任务。
+
+当前具体实现分别为 `device::gkd_sentry_chassis` 和 `device::gkd_sentry_gimbal`，声明位于 `device/chassis/gkd_sentry_chassis.hpp`、`device/gimbal/gkd_sentry_gimbal.hpp`。具体类型的注册宏位于各自实现文件，工厂表和 `create/current/init` 实现在 `src/device/chassis/base.cpp`、`src/device/gimbal/base.cpp`；Robot 和控制层只依赖两个 base 类型。
 
 底盘和云台通过 `chassis_registry`、`gimbal_registry` 注册和选择具体实现。实现文件使用 `ROBOCTRL_REGISTER_CHASSIS` / `ROBOCTRL_REGISTER_GIMBAL` 宏：宏展开为静态布尔变量和 lambda，在程序启动的静态初始化阶段完成工厂注册。注册表只保存工厂和当前非拥有型引用，具体实例的生命周期仍由设备实现（当前标准实现使用单例）。
 

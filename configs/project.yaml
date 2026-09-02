@@ -15,7 +15,12 @@ control_pad: {name: control_pad, serial_name: serial1}
 imu: {name: imu, serial_name: serial1}
 robot:
   chassis_info:
+    left_front_motor: left_front_motor
+    right_front_motor: right_front_motor
+    left_rear_motor: left_rear_motor
+    right_rear_motor: right_rear_motor
     control_time: {count: 2, unit: milliseconds}
+    max_rotate_speed: 1.0
   control_pad_key: control_pad
   enable_chassis: true
   enable_gimbal: false

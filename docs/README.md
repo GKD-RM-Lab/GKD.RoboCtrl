@@ -39,7 +39,7 @@
 - `src/main.cpp` 默认加载 `configs/<type>.yaml`（也可用 `--config` 指定 YAML/JSON），先打印同目录全部配置文本，再整体验证并构造 CAN、串口、DJI 电机、遥控器和 IMU。
 - CAN、串口和 DJI 电机采用“构造 → 连接 → 启动”阶段，不在构造函数中启动长期协程。
 - Robot 默认进入 `NoForce`，DJI 电机默认禁用；遥控器完成双开关加滚轮解锁手势后进入 `FollowGimbal`，遥控失联会退回 `NoForce`。
-- Infantry/Hero 启用底盘、云台和发射，Sentry/Project 当前只启用底盘；“启用”不等于功能已经完整。
+- Infantry/Hero/Sentry 启用底盘、云台和发射，Project 当前只启用底盘；Sentry 额外保留旧工程副云台电机拓扑，但当前只绑定一个主云台实例。“启用”不等于功能已经完整。
 - `device::chassis`/`device::gimbal` 已接入底层运动学、IMU 角度外环和电机速度目标；`ctrl::motion_control` 负责后台分发。`power_manager`、`referee`、M9025 等仍有明显骨架或未完成部分，详见模块文档。
 - `tests/unit_tests.cpp` 覆盖静态与四份运行时配置的校验/解析、multiton 重复键、组合解析器、底盘限速、遥控映射、发射互锁和 `motor_base` 运行时多态；CI 覆盖范围与已知限制见构建文档。
 - 运行主程序仍需要 Linux SocketCAN、串口和真实/仿真硬件；单元测试通过不等于实车安全。

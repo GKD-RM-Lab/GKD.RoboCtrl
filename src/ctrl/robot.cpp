@@ -18,8 +18,8 @@ bool robot::init(const info_type& info){
     if (info.enable_gimbal && !device::gimbal_registry::init(info.gimbal_type, info.gimbal_info)) {
         return false;
     }
-    chassis_ = device::chassis_registry::current();
-    gimbal_ = device::gimbal_registry::current();
+    chassis_ = info.enable_chassis ? device::chassis_registry::current() : nullptr;
+    gimbal_ = info.enable_gimbal ? device::gimbal_registry::current() : nullptr;
     if (info.enable_shoot && !roboctrl::init(info.shoot_info)) {
         return false;
     }

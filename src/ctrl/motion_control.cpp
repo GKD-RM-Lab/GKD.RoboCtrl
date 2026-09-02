@@ -10,8 +10,9 @@ bool motion_control::init(const info_type& info) {
     control_pad_key_ = info.control_pad_key;
     control_time_ = info.control_time;
     enable_shoot_ = info.enable_shoot;
-    chassis_ = device::chassis_registry::current();
-    gimbal_ = device::gimbal_registry::current();
+    auto& robot = roboctrl::get<ctrl::robot>();
+    chassis_ = robot.chassis();
+    gimbal_ = robot.gimbal();
     auto& pad = roboctrl::get<device::control_pad>(control_pad_key_);
     pad.on_update([this](const device::control_pad_state& input) { input_ = input; });
     roboctrl::spawn(task());
@@ -24,8 +25,8 @@ void motion_control::stop_outputs() {
         chassis_->set_rotate_speed(0.0f);
     }
     if (gimbal_) {
-        gimbal_->set_yaw(0.0f);
-        gimbal_->set_pitch(0.0f);
+        gimbal_->set_target_yaw(0.0f);
+        gimbal_->set_target_pitch(0.0f);
     }
     if (roboctrl::get<robot>().state() == robot_state::NoForce) {
         mapper_.reset();

@@ -28,7 +28,12 @@ robot:
     pitch_angle_pid: {kp: 15.0, ki: 0.0, kd: 10.0, max_out: 10.0, max_iout: 0.0}
     control_time: {count: 1, unit: milliseconds}
   chassis_info:
+    left_front_motor: left_front_motor
+    right_front_motor: right_front_motor
+    left_rear_motor: left_rear_motor
+    right_rear_motor: right_rear_motor
     control_time: {count: 2, unit: milliseconds}
+    max_rotate_speed: 1.0
   shoot_info:
     friction_params: {acc: 100.0}
     friction_max_speed: 20.0
