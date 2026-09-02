@@ -22,13 +22,16 @@ template <int _rows, int _cols, typename T = float>
     requires(std::is_arithmetic_v<T> && _rows > 0 && _cols > 0) //编译期检查是否为算数类型
 class Matrix
 {
+    template <int r, int c, typename U>
+        requires(std::is_arithmetic_v<U> && r > 0 && c > 0)
+    friend class Matrix;
 
 public:
     /**
      * @brief Constructor without input data
      * @param
      */
-    constexpr Matrix() = default;
+    constexpr Matrix() : data{} {}
 
     constexpr explicit Matrix(T val)
     {
@@ -318,7 +321,7 @@ public:
      */
     constexpr Matrix<1, _cols, T> row(int row) const
     {
-        return block<1, _cols, T>(row, 0);
+        return block<1, _cols>(row, 0);
     }
 
     /**
@@ -328,7 +331,7 @@ public:
      */
     constexpr Matrix<_rows, 1, T> col(int col) const
     {
-        return block<_rows, 1, T>(0, col);
+        return block<_rows, 1>(0, col);
     }
 
     /**

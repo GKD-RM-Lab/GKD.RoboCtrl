@@ -114,7 +114,7 @@ struct control_chain {
     /**
      * @brief 读取链路末尾控制器的状态。
      */
-    const state_type& state() const {
+    state_type state() const {
         return std::get<sizeof...(Cs) - 1>(controllers_).state();
     }
 };

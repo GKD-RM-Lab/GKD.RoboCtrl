@@ -89,6 +89,7 @@ std::pair<uint16_t, uint16_t> dji_motor::can_pkg_id() const {
             return {0x1ff, 0};
         }
     }
+    throw std::invalid_argument("unsupported DJI motor type");
 }
 
 roboctrl::awaitable<void> dji_motor_group::send_command(uint16_t can_id_) {
@@ -158,6 +159,10 @@ dji_motor::dji_motor(dji_motor::info_type info)
         case dji_motor::M6020:
             reduction_ratio_ = 1.f;
             break;
+        default:
+            throw std::invalid_argument(std::format(
+                "DJI motor {} has unsupported type {}", info.name,
+                static_cast<int>(info.type_)));
     }
 
     log_debug("Dji \"{}\" motor {} created on can \"{}\" with pid(p={},i={},d={},max iout={},max out={})",

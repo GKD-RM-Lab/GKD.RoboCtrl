@@ -4,6 +4,8 @@
 #include "device/controlpad.h"
 #include "device/motor/dji.h"
 
+#include <algorithm>
+
 using namespace roboctrl::ctrl;
 
 bool robot::init(const info_type& info){
@@ -24,11 +26,37 @@ bool robot::init(const info_type& info){
         return false;
     }
 
+    controlled_motors_.clear();
+    const auto bind_motor = [this](const std::string& key) {
+        auto* motor = &roboctrl::get<device::dji_motor>(key);
+        if (std::find(controlled_motors_.begin(), controlled_motors_.end(), motor) ==
+            controlled_motors_.end()) {
+            controlled_motors_.push_back(motor);
+        }
+    };
+    if (info.enable_chassis) {
+        bind_motor(info.chassis_info.left_front_motor);
+        bind_motor(info.chassis_info.right_front_motor);
+        bind_motor(info.chassis_info.left_rear_motor);
+        bind_motor(info.chassis_info.right_rear_motor);
+    }
+    if (info.enable_gimbal) {
+        bind_motor(info.gimbal_info.yaw_motor_key);
+        bind_motor(info.gimbal_info.pitch_motor_key);
+    }
+    if (info.enable_shoot) {
+        bind_motor(info.shoot_info.left_friction_motor);
+        bind_motor(info.shoot_info.right_friction_motor);
+        bind_motor(info.shoot_info.trigger_motor);
+    }
+
     set_state(robot_state::NoForce);
 
-    roboctrl::init(motion_control::info_type{
+    if (!roboctrl::init(motion_control::info_type{
         .control_pad_key = control_pad_key_,
-        .enable_shoot = enable_shoot_});
+        .enable_shoot = enable_shoot_})) {
+        return false;
+    }
     roboctrl::spawn(task());
 
     log_info("Robot initiated");
@@ -43,9 +71,9 @@ void robot::set_state(robot_state state) {
     const bool enabled = state != robot_state::NoForce;
     if (enable_chassis_ && chassis_) chassis_->set_enabled(enabled);
     if (enable_gimbal_ && gimbal_) gimbal_->set_enabled(enabled);
-    roboctrl::for_each_instance<device::dji_motor>([enabled](device::dji_motor& motor) {
-        motor.set_enabled(enabled);
-    });
+    for (auto* motor : controlled_motors_) {
+        if (motor) motor->set_enabled(enabled);
+    }
 }
 
 roboctrl::awaitable<void> robot::task(){

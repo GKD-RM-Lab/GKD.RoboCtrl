@@ -56,7 +56,7 @@ validate → construct → connect/register callbacks → init controllers/NoFor
 
 批量多例初始化会先检查当前表和本批次内的重复 key，再构造整批对象；`for_each_instance`、`connect_all`、`start_all` 提供阶段化批处理。`instance_ref<T>` 保存 key 并延迟查找具体多例。
 
-对象间可以保存配置/key，也可以在初始化后保存指向 `device::motor_base` 的非拥有型指针。初始化阶段通过具体电机类型查找一次，控制循环通过基类虚函数访问稳定的 multiton 对象。这些指针不拥有实例，因此依赖“进程内实例不删除”的当前生命周期。
+对象间可以保存配置/key，也可以在初始化后保存指向 `device::motor_base` 的非拥有型指针。初始化阶段通过具体电机类型查找一次，控制循环通过基类虚函数访问稳定的 multiton 对象；Robot 只使能实际绑定到已启用子系统的电机。这些指针不拥有实例，因此依赖“进程内实例不删除”的当前生命周期。
 
 ## 数据流
 

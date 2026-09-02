@@ -2,6 +2,7 @@
 #include "core/async.hpp"
 #include "device/imu/base.hpp"
 #include "device/imu/serial_imu.hpp"
+#include "device/motor/dji.h"
 #include "utils/utils.hpp"
 
 using namespace roboctrl;

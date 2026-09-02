@@ -8,7 +8,7 @@
 
 `xmake f --type=<infantry|hero|sentry|project>` 选择默认文件 `configs/<type>.yaml`。四份 YAML 都直接组合 CAN、串口、DJI 电机、ControlPad、IMU 和 Robot 的既有 `info_type`；Project 当前只启用底盘控制，Infantry/Hero/Sentry 同时声明云台与发射。Sentry 配置还保留旧工程副云台电机拓扑，但当前运行时只绑定一个主云台实例。车型参数只维护在运行时 YAML 中，避免同一配置存在两份来源。
 
-底盘配置声明四个电机 key、控制周期和底盘最高旋转速度 `max_rotate_speed`；Infantry/Hero/Sentry 的 Gimbal 声明 IMU/电机 key、角度 PID 和 1 ms 周期，Shoot 声明摩擦轮斜坡、最大速度与车型相关的拨弹速度。配置预检会验证这些 key、方向、范围和周期。
+底盘配置声明四个电机 key、控制周期和底盘最高旋转速度 `max_rotate_speed`；Infantry/Hero/Sentry 的 Gimbal 声明 IMU/电机 key、角度 PID 和 1 ms 周期，Shoot 声明摩擦轮斜坡、最大速度与车型相关的拨弹速度。配置预检会验证这些 key、方向、范围、有限浮点值、PID 输出界限、设备路径和周期。
 
 | 类型 | CAN | 串口设备 | 电机集合 | 启用控制 |
 | --- | --- | --- | --- | --- |

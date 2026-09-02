@@ -44,12 +44,18 @@ public:
             co_return;
         }
 
+        auto owner_keepalive = keepalive;
         queue_.push_back(item{
             std::make_shared<std::vector<std::byte>>(data.begin(), data.end()),
             std::move(keepalive)});
         queued_bytes_ += data.size();
         if (!writing_) {
             writing_ = true;
+            // Keep the owner alive for the complete drain coroutine.  A
+            // per-frame keepalive alone can be released immediately after
+            // the final write, before drain() performs its final member
+            // accesses.
+            drain_keepalive_ = std::move(owner_keepalive);
             roboctrl::spawn(drain());
         }
         co_return;
@@ -57,6 +63,7 @@ public:
 
 private:
     awaitable<void> drain() {
+        auto drain_keepalive = drain_keepalive_;
         try {
             while (!queue_.empty()) {
                 auto frame = std::move(queue_.front());
@@ -83,6 +90,7 @@ private:
                 "asynchronous write failed with an unknown exception");
         }
         writing_ = false;
+        drain_keepalive_.reset();
     }
 
     writer_type writer_;
@@ -94,6 +102,7 @@ private:
     std::deque<item> queue_;
     std::size_t queued_bytes_{0};
     bool writing_{false};
+    std::shared_ptr<void> drain_keepalive_;
 
     static constexpr std::size_t max_queued_bytes_ = 64 * 1024;
 };

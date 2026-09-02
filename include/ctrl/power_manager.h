@@ -5,6 +5,11 @@
  */
 #pragma once
 
+// The historical power manager still depends on the pre-migration type tree.
+// Keep it opt-in until it is ported to the current device/control interfaces;
+// the default build must not expose an uncompilable legacy header.
+#if defined(ROBOCTRL_ENABLE_LEGACY_POWER_MANAGER)
+
 #include <cstdint>
 #include <deque>
 #include <array>
@@ -216,3 +221,5 @@ namespace power_manage{
 }
 
 }  // namespace Power
+
+#endif // ROBOCTRL_ENABLE_LEGACY_POWER_MANAGER

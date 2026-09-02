@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <ctime>
+#include <stdexcept>
 
 #include "Matrix.hpp"
 #include "core/logger.h"
@@ -35,6 +36,7 @@ namespace roboctrl::utils
 
         constexpr RLS(float delta_, float lambda_, Matrixf<dim, 1> initParam) : RLS(delta_, lambda_) {
             defaultParamsVector = initParam;
+            paramsVector = initParam;
         }
 
         /**
@@ -44,7 +46,7 @@ namespace roboctrl::utils
         void reset() {
             transMatrix = Matrixf<dim, dim>::eye() * delta;
             gainVector = Matrixf<dim, 1>::zeros();
-            paramsVector = Matrixf<dim, 1>::zeros();
+            paramsVector = defaultParamsVector;
         }
 
         /**
@@ -81,7 +83,11 @@ namespace roboctrl::utils
             * @param None
             * @retval paramsVector
             */
-        constexpr Matrixf<dim, 1> &getParamsVector() const {
+        constexpr Matrixf<dim, 1>& getParamsVector() {
+            return paramsVector;
+        }
+
+        constexpr const Matrixf<dim, 1>& getParamsVector() const {
             return paramsVector;
         }
 
@@ -102,11 +108,11 @@ namespace roboctrl::utils
             */
         void validate() const {
 
-            if(!(lambda >= 0.0f || lambda <= 1.0f))
-                LOG_ERROR("!(lambda >= 0.0f || lambda <= 1.0f)");
+            if (!(lambda > 0.0f && lambda <= 1.0f))
+                throw std::invalid_argument("RLS lambda must be in (0, 1]");
 
             if(!(delta > 0))
-                LOG_ERROR("!(delta > 0)");
+                throw std::invalid_argument("RLS delta must be positive");
         }
 
         uint32_t dimension;  // Dimension of the RLS space
@@ -121,6 +127,6 @@ namespace roboctrl::utils
         Matrixf<dim, 1> gainVector;     // Gain vector for params update
         Matrixf<dim, 1> paramsVector;   // Params vector
         Matrixf<dim, 1> defaultParamsVector;
-        float output;  // Estimated / filtered output
+        float output {0.0f};  // Estimated / filtered output
     };
 } 

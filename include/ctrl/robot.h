@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "core/async.hpp"
 #include "ctrl/control_mapping.hpp"
@@ -9,6 +10,7 @@
 #include "device/chassis/base.hpp"
 #include "device/controlpad.h"
 #include "device/gimbal/base.hpp"
+#include "device/motor/base.hpp"
 #include "utils/singleton.hpp"
 #include "utils/utils.hpp"
 
@@ -63,6 +65,7 @@ private:
     bool enable_shoot_ {false};
     device::chassis_base* chassis_ {nullptr};
     device::gimbal_base* gimbal_ {nullptr};
+    std::vector<device::motor_base*> controlled_motors_;
 };
 
 static_assert(utils::singleton<robot>);

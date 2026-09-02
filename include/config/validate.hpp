@@ -1,6 +1,8 @@
 #pragma once
 
 #include <concepts>
+#include <cmath>
+#include <cstdint>
 #include <format>
 #include <initializer_list>
 #include <stdexcept>
@@ -8,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <limits>
 
 #include "ctrl/robot.h"
 #include "device/controlpad.h"
@@ -51,6 +54,28 @@ inline void validate_configuration(
     validate_unique_keys("serial", serials);
     validate_unique_keys("DJI motor", motors);
 
+    for (const auto& can : cans) {
+        if (can.interface_name.empty()) {
+            throw std::invalid_argument(std::format(
+                "CAN {} interface_name must not be empty", can.name));
+        }
+    }
+    for (const auto& serial : serials) {
+        if (serial.device.empty() || serial.baud_rate == 0) {
+            throw std::invalid_argument(std::format(
+                "serial {} has invalid device or baud rate", serial.name));
+        }
+    }
+    if (control_pad.name.empty() || control_pad.serial_name.empty()) {
+        throw std::invalid_argument("control pad name and serial_name must not be empty");
+    }
+    if (imu.name.empty() || imu.serial_name.empty()) {
+        throw std::invalid_argument("IMU name and serial_name must not be empty");
+    }
+    if (robot.control_pad_key.empty()) {
+        throw std::invalid_argument("robot control_pad_key must not be empty");
+    }
+
     std::unordered_set<std::string_view> can_names;
     for (const auto& can : cans) {
         can_names.emplace(can.key());
@@ -77,6 +102,12 @@ inline void validate_configuration(
     std::unordered_set<std::string_view> motor_names;
     std::unordered_set<std::string> feedback_slots;
     std::unordered_set<std::string> command_slots;
+    const auto valid_pid = [](const auto& pid) {
+        return std::isfinite(pid.kp) && std::isfinite(pid.ki) &&
+            std::isfinite(pid.kd) && std::isfinite(pid.max_out) &&
+            std::isfinite(pid.max_iout) && pid.max_out >= 0.0f &&
+            pid.max_iout >= 0.0f;
+    };
     for (const auto& motor : motors) {
         motor_names.emplace(motor.name);
         if (!can_names.contains(motor.can_name)) {
@@ -94,6 +125,16 @@ inline void validate_configuration(
         if (motor.control_time <= std::chrono::steady_clock::duration::zero()) {
             throw std::invalid_argument(std::format(
                 "DJI motor {} has non-positive control period", motor.name));
+        }
+        const auto finite = [](float value) { return std::isfinite(value); };
+        if (!finite(motor.radius) || !finite(motor.pid_params.kp) ||
+            !finite(motor.pid_params.ki) || !finite(motor.pid_params.kd) ||
+            !finite(motor.pid_params.max_out) || !finite(motor.pid_params.max_iout) ||
+            motor.pid_params.max_out < 0.0f || motor.pid_params.max_iout < 0.0f ||
+            motor.pid_params.max_out > static_cast<float>(std::numeric_limits<int16_t>::max()) ||
+            motor.pid_params.max_iout > static_cast<float>(std::numeric_limits<int16_t>::max())) {
+            throw std::invalid_argument(std::format(
+                "DJI motor {} has invalid PID parameters", motor.name));
         }
 
         const int feedback_id = motor.type_ == device::dji_motor::M6020
@@ -135,6 +176,7 @@ inline void validate_configuration(
         require_motor(robot.chassis_info.left_rear_motor, "chassis");
         require_motor(robot.chassis_info.right_rear_motor, "chassis");
         if (robot.chassis_info.control_time <= std::chrono::steady_clock::duration::zero() ||
+            !std::isfinite(robot.chassis_info.max_rotate_speed) ||
             robot.chassis_info.max_rotate_speed <= 0.0f) {
             throw std::invalid_argument("chassis has invalid control parameters");
         }
@@ -147,6 +189,12 @@ inline void validate_configuration(
                 "gimbal references missing IMU {}", robot.gimbal_info.imu_key));
         }
         if (robot.gimbal_info.control_time <= std::chrono::steady_clock::duration::zero() ||
+            !std::isfinite(robot.gimbal_info.yaw_direction) ||
+            !std::isfinite(robot.gimbal_info.pitch_direction) ||
+            !std::isfinite(robot.gimbal_info.pitch_min) ||
+            !std::isfinite(robot.gimbal_info.pitch_max) ||
+            !valid_pid(robot.gimbal_info.yaw_angle_pid) ||
+            !valid_pid(robot.gimbal_info.pitch_angle_pid) ||
             robot.gimbal_info.yaw_direction == 0.0f ||
             robot.gimbal_info.pitch_direction == 0.0f ||
             robot.gimbal_info.pitch_min > robot.gimbal_info.pitch_max) {
@@ -159,6 +207,13 @@ inline void validate_configuration(
         require_motor(robot.shoot_info.trigger_motor, "shoot");
         if (robot.shoot_info.control_time <= std::chrono::steady_clock::duration::zero() ||
             robot.shoot_info.jam_release_time < std::chrono::steady_clock::duration::zero() ||
+            !std::isfinite(robot.shoot_info.friction_params.acc) ||
+            robot.shoot_info.friction_params.acc < 0.0f ||
+            !std::isfinite(robot.shoot_info.friction_max_speed) ||
+            !std::isfinite(robot.shoot_info.trigger_speed) ||
+            !std::isfinite(robot.shoot_info.friction_ready_speed) ||
+            !std::isfinite(robot.shoot_info.jam_current) ||
+            !std::isfinite(robot.shoot_info.jam_speed) ||
             robot.shoot_info.friction_max_speed < 0.0f ||
             robot.shoot_info.friction_ready_speed < 0.0f ||
             robot.shoot_info.jam_current < 0.0f ||

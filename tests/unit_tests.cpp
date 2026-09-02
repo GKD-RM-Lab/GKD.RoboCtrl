@@ -21,6 +21,7 @@
 #include "utils/kinematics/mecanum.hpp"
 #include "utils/pid.h"
 #include "utils/ramp.hpp"
+#include "utils/RLS.hpp"
 #include "utils/controller.hpp"
 #include "io/base.hpp"
 
@@ -196,6 +197,51 @@ void test_control_chain_and_explicit_dt() {
     chain.add(std::make_unique<add_stage>(1.0f));
     chain.add(std::make_unique<add_stage>(2.0f));
     assert(std::fabs(chain.update(3.0f, 0.01f) - 6.0f) < 1e-6f);
+
+    struct value_controller {
+        using state_type = float;
+        using input_type = float;
+        struct params_type {};
+        explicit value_controller(params_type) {}
+        void update(float input) { state_ = input; }
+        float state() const { return state_; }
+        float state_ {0.0f};
+    };
+    roboctrl::utils::control_chain<value_controller> value_chain{
+        value_controller{{}}};
+    value_chain.update(4.0f);
+    const auto value = value_chain.state();
+    assert(value == 4.0f);
+}
+
+void test_matrix_and_rls_initialization() {
+    roboctrl::utils::Matrixf<2, 2> lhs;
+    lhs[0][0] = 1.0f;
+    lhs[1][1] = 1.0f;
+    roboctrl::utils::Matrixf<2, 2> rhs;
+    rhs[0][1] = 2.0f;
+    rhs[1][0] = 3.0f;
+    const auto product = lhs * rhs;
+    assert(product[0][1] == 2.0f);
+    assert(product[1][0] == 3.0f);
+
+    const auto row = product.row(0);
+    const auto col = product.col(1);
+    assert(row[0][1] == 2.0f);
+    assert(col[0][0] == 2.0f && col[1][0] == 0.0f);
+
+    roboctrl::utils::RLS<2> rls{1.0f, 0.99f};
+    assert(rls.getOutput() == 0.0f);
+    auto& params = rls.getParamsVector();
+    assert(params[0][0] == 0.0f && params[1][0] == 0.0f);
+
+    bool invalid_lambda = false;
+    try {
+        roboctrl::utils::RLS<2> invalid{1.0f, 0.0f};
+    } catch (const std::invalid_argument&) {
+        invalid_lambda = true;
+    }
+    assert(invalid_lambda);
 }
 
 void test_control_mapping_requires_arm_and_preserves_edges() {
@@ -272,6 +318,22 @@ void test_rejects_invalid_control_configuration() {
         threw = true;
     }
     assert(threw);
+
+    auto invalid_pid = loaded->dji_motors;
+    invalid_pid.front().pid_params.max_out = -1.0f;
+    threw = false;
+    try {
+        roboctrl::config::validate_configuration(
+            loaded->cans,
+            loaded->serials,
+            invalid_pid,
+            loaded->control_pad,
+            loaded->imu,
+            loaded->robot);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    assert(threw);
 }
 
 void test_runtime_configuration_files() {
@@ -316,6 +378,7 @@ int main() {
     test_chassis_speed_limit();
     test_device_input_abstractions();
     test_control_chain_and_explicit_dt();
+    test_matrix_and_rls_initialization();
     test_control_mapping_requires_arm_and_preserves_edges();
     test_shoot_interlocks();
     test_rejects_invalid_control_configuration();

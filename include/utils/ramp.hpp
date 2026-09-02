@@ -42,7 +42,7 @@ public:
      * @details 包含最大变化速率（单位/秒）。
      */
     struct params_type {
-        T acc; ///< 最大速度变化率 (单位/秒)
+        T acc{}; ///< 最大速度变化率 (单位/秒)
     };
 
     using input_type = T;  ///< 输入类型：目标值
