@@ -6,7 +6,7 @@
 
 ## 车型配置
 
-`xmake f --type=<infantry|hero|sentry|project>` 选择默认文件 `configs/<type>.yaml`。四份 YAML 都直接组合 CAN、串口、DJI 电机、ControlPad、IMU 和 Robot 的既有 `info_type`；Project 当前只启用底盘控制，Infantry/Hero/Sentry 同时声明云台与发射。Sentry 配置还保留旧工程副云台电机拓扑，但当前运行时只绑定一个主云台实例。车型参数只维护在运行时 YAML 中，避免同一配置存在两份来源。
+车型完全在运行时选择，不再通过 xmake 编译参数生成不同二进制。未指定 `--config` 时使用 `configs/infantry.yaml`；通过 `--config configs/<type>.yaml` 可选择 `hero`、`sentry`、`project`，也可传入自定义 YAML/JSON。四份 YAML 都直接组合 CAN、串口、DJI 电机、ControlPad、IMU 和 Robot 的既有 `info_type`；Project 当前只启用底盘控制，Infantry/Hero/Sentry 同时声明云台与发射。Sentry 配置还保留旧工程副云台电机拓扑，但当前运行时只绑定一个主云台实例。车型参数只维护在运行时 YAML 中，避免同一配置存在两份来源。
 
 底盘配置声明四个电机 key、控制周期和底盘最高旋转速度 `max_rotate_speed`；Infantry/Hero/Sentry 的 Gimbal 声明 IMU/电机 key、角度 PID 和 1 ms 周期，Shoot 声明摩擦轮斜坡、最大速度与车型相关的拨弹速度。配置预检会验证这些 key、方向、范围、有限浮点值、PID 输出界限、设备路径和周期。
 
@@ -56,39 +56,37 @@ dji_motors:
 
 ## 主程序参数与运行
 
-目标名为 `gkd-roboctrl`，配置后产物 basename 为 `gkd.roboctrl.<type>`。命令行参数：
+目标名为 `gkd-roboctrl`，产物 basename 固定为 `gkd-roboctrl`。命令行参数：
 
 - `-h, --help`：打印帮助。
 - `-l, --log <debug|info|warn|error>`：设置最低日志等级。
 - `-f, --filter <text>`：设置日志 role 过滤字符串。
-- `-c, --config <path>`：加载指定的 YAML 或 JSON 文件；省略时加载 `configs/<BUILD_TYPE>.yaml`。
+- `-c, --config <path>`：加载指定的 YAML 或 JSON 文件；省略时加载 `configs/infantry.yaml`。
 
 `start.sh` 只是 `xmake run gkd-roboctrl` 的参数转发包装。主程序启动会立即打开配置中的 CAN 和串口，事件循环开始后电机组持续发送帧；未经授权不要用它做“验证命令”。
 
 ## 构建
 
 ```sh
-xmake f -y -m debug --type=project
+xmake f -y -m debug
 xmake build -y gkd-roboctrl
 xmake build -y unit-tests
 xmake run unit-tests
 ```
 
-xmake 强制 LLVM、C++23 和 libc++，依赖 `asio`、`cxxopts`、启用 YAML 的 `reflect-cpp`，主程序链接 pthread。`unit-tests` 只编译 `tests/unit_tests.cpp` 与 `src/device/base.cpp`，不打开 CAN/串口。切换车型前必须重新执行 `xmake f`，否则可能仍在验证上一次缓存的 `BUILD_TYPE`。
+xmake 强制 LLVM、C++23 和 libc++，依赖 `asio`、`cxxopts`、启用 YAML 的 `reflect-cpp`，主程序链接 pthread。车型不参与编译，运行时通过 `--config` 选择；`unit-tests` 只编译 `tests/unit_tests.cpp` 与 `src/device/base.cpp`，不打开 CAN/串口。
 
 若变更公共模板、配置结构、concept 或跨车型语义，至少执行：
 
 ```sh
-for type in infantry hero sentry project; do
-  xmake f -y -m debug --type="$type"
-  xmake build -y gkd-roboctrl unit-tests
-  xmake run unit-tests
-done
+xmake f -y -m debug
+xmake build -y gkd-roboctrl unit-tests
+xmake run unit-tests
 ```
 
 Release 相关、编译器优化敏感或准备合并的改动还应重复 `-m release`。不要用循环运行主程序。
 
-`.github/workflows/build-test.yml` 在 Ubuntu 上对四种车型分别构建 Debug/Release，并运行单元测试。工作流中的 xmake 通用选项统一放在目标名之前（例如 `xmake build -y gkd-roboctrl`），兼容当前使用的 xmake 3.1.1。文档部署工作流监听默认分支 `master`。
+`.github/workflows/build-test.yml` 在 Ubuntu 上分别构建 Debug/Release，并运行单元测试；车型配置作为独立运行时数据，不再形成构建矩阵。工作流中的 xmake 通用选项统一放在目标名之前（例如 `xmake build -y gkd-roboctrl`），兼容当前使用的 xmake 3.1.1。文档部署工作流监听默认分支 `master`。
 
 Doxygen 使用根目录 `Doxyfile`、`DoxygenLayout.xml` 和 `mainpage.dox`，把 `include/`、`src/` 以及 `docs/` 中的 API/架构文档统一生成到 `docs/html/`；`docs/html/` 被忽略，`docs/*.md` 与 `docs/modules/*.md` 则进入版本控制。生成首页由 `mainpage.dox` 提供，包含构建命令、生命周期和模块导航；API 文档和 Agent 架构文档用途互补，公共 API 注释和对应模块文档都要随行为更新。
 

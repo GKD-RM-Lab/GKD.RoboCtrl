@@ -368,6 +368,11 @@ void test_runtime_configuration_files() {
     }
 }
 
+void test_runtime_default_configuration_path() {
+    assert(roboctrl::config::default_configuration_path() ==
+           std::filesystem::path{"configs/infantry.yaml"});
+}
+
 } // namespace
 
 int main() {
@@ -383,4 +388,5 @@ int main() {
     test_shoot_interlocks();
     test_rejects_invalid_control_configuration();
     test_runtime_configuration_files();
+    test_runtime_default_configuration_path();
 }

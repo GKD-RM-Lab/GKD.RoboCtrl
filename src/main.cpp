@@ -70,7 +70,8 @@ int main(int argc,char** argv){
     logger::set_level(log::Info);
 #endif
 
-    cxxopts::Options options("roboctrl", "Roboctrl for " TYPE_STR);
+    cxxopts::Options options(
+        "roboctrl", "Roboctrl with runtime-selected robot profile");
     options.add_options()
         ("h,help", "Print help")
         ("l,log", "Log level", cxxopts::value<std::string>()->default_value("info"))

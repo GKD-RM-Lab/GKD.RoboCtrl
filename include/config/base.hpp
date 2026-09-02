@@ -1,25 +1,17 @@
+/**
+ * @file base.hpp
+ * @brief 运行时车型选择的兼容入口。
+ * @details 车型不再通过编译宏选择；程序启动后从 YAML/JSON 配置文件读取
+ *          profile 和完整硬件拓扑。该头文件仅保留默认配置名，避免旧 include
+ *          点在移除编译期车型选择后失效。
+ */
 #pragma once
 
-#if BUILD_TYPE == 1 // infantry
-#define TYPE_INFANTRY
-#define TYPE_STR "infantry"
-#endif
+#include <string_view>
 
-#if BUILD_TYPE == 2 //hero
-#define TYPE_HERO
-#define TYPE_STR "hero"
-#endif
+namespace roboctrl::config {
 
-#if BUILD_TYPE == 3 // sentry
-#define TYPE_SENTRY
-#define TYPE_STR "sentry"
-#endif
+/** @brief 未指定 `--config` 时使用的默认配置文件名。 */
+inline constexpr std::string_view default_profile = "infantry";
 
-#if BUILD_TYPE == 4 // project
-#define TYPE_PROJECT
-#define TYPE_STR "project"
-#endif
-
-#ifndef TYPE_STR
-#error "No type specified"
-#endif
+} // namespace roboctrl::config

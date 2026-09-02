@@ -27,17 +27,18 @@
  * @section quickstart_sec 构建与无硬件测试
  *
  * 需要 LLVM、libc++、xmake 以及项目声明的 Asio、cxxopts、reflect-cpp 依赖。
- * 选择车型后构建主程序和单元测试：
+ * 选择构建模式后构建主程序和单元测试：
  *
  * @code{.sh}
- * xmake f -y -m debug --type=project
+ * xmake f -y -m debug
  * xmake build -y gkd-roboctrl
  * xmake build -y unit-tests
  * xmake run unit-tests
  * @endcode
  *
  * 主程序会访问 Linux SocketCAN、串口并向电机发送报文；没有硬件授权时不要
- * 使用 xmake run gkd-roboctrl。四车型 Debug/Release 构建由
+ * 使用 xmake run gkd-roboctrl。车型通过 `--config configs/<type>.yaml` 在运行时
+ * 选择，省略时默认使用 `configs/infantry.yaml`。Debug/Release 构建由
  * `.github/workflows/build-test.yml` 自动执行。
  *
  * @section module_sec 模块导航

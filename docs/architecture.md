@@ -8,7 +8,7 @@ GKD.Roboctrl 将机器人电控拆成可复用的通信、设备和控制层。�
 
 ```text
 src/main.cpp
-    │ 选择 BUILD_TYPE、解析 CLI、读取 YAML/JSON、按顺序初始化
+    │ 解析 CLI、选择 YAML/JSON、按顺序初始化
     ▼
 configs/*.yaml + include/config/runtime.hpp
     │ 直接组合既有组件的 info_type，解析和校验连接关系
@@ -28,7 +28,7 @@ Linux SocketCAN / serial / TCP / UDP
 
 ## 启动生命周期
 
-1. xmake 通过 `type` 选项生成 `BUILD_TYPE`，`include/config/base.hpp` 将其映射为 `TYPE_*` 和 `TYPE_STR`，并决定默认路径 `configs/<type>.yaml`。
+1. xmake 只选择 Debug/Release 构建模式；程序通过 `--config` 选择运行时车型，未指定时使用 `configs/infantry.yaml`。`include/config/base.hpp` 仅保留默认配置名，不再定义车型编译宏。
 2. `src/main.cpp` 解析 `--help`、`--log`、`--filter`、`--config`，打印所选配置目录中的全部 YAML/JSON 文本，然后读取指定配置文件。
 3. `load_configuration()` 用 reflect-cpp 将文件直接反序列化为既有组件的 `info_type`；`validate_configuration()` 在访问硬件前检查 key、依赖、DJI ID/指令槽和控制模块必需电机。
 4. `roboctrl::init` 先构造 CAN、串口、DJI 电机、遥控器和 IMU；DJI 电机此时不注册回调或启动任务。
@@ -86,7 +86,7 @@ SocketCAN 帧
 
 ## 配置驱动理念
 
-不同机器人共用驱动和控制实现，差异集中在 `configs/<type>.yaml`：总线名、设备路径、电机 ID、轮半径、PID 和控制参数都以组件原有 `info_type` 的字段名直接表达。加载后保存的是拥有字符串的 `info_type`，因此配置文件的文本寿命不会影响 multiton key。`include/config/runtime.hpp` 负责反序列化，`validate.hpp` 负责启动前语义校验；不再维护车型硬编码配置副本。
+不同机器人共用同一个二进制，差异集中在 `configs/<type>.yaml`：总线名、设备路径、电机 ID、轮半径、PID 和控制参数都以组件原有 `info_type` 的字段名直接表达。加载后保存的是拥有字符串的 `info_type`，因此配置文件的文本寿命不会影响 multiton key。`include/config/runtime.hpp` 负责反序列化，`validate.hpp` 负责启动前语义校验；不再维护车型硬编码配置副本。
 
 配置不是“能解析即可”。`validate_configuration` 把跨表引用和槽位冲突提前到硬件打开之前；新增 `info_type` 字段时，应同时确定 YAML 表达、默认值/缺失策略、可在无硬件环境执行的校验和正例/负例测试。`robot.chassis_type` 和 `robot.gimbal_type` 只作为工厂选择键，由 `chassis_registry`/`gimbal_registry` 在初始化时查找并派发具体设备，配置层不复制注册表白名单。
 

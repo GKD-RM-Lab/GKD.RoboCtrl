@@ -13,7 +13,7 @@
 
 | 模块 | 主要路径 | 职责 | 文档 |
 | --- | --- | --- | --- |
-| 入口与构建 | `src/main.cpp`、`xmake.lua`、`start.sh` | 选择机器人类型、解析参数、初始化、启动事件循环 | [`modules/config-build.md`](modules/config-build.md) |
+| 入口与构建 | `src/main.cpp`、`xmake.lua`、`start.sh` | 选择运行时配置、解析参数、初始化、启动事件循环 | [`modules/config-build.md`](modules/config-build.md) |
 | 配置 | `configs/*.yaml`、`include/config/runtime.hpp`、`include/config/validate.hpp` | 运行时 YAML/JSON 组装与语义校验 | [`modules/config-build.md`](modules/config-build.md) |
 | 核心 | `include/core/`、`src/core/` | 协程调度、实例管理、日志 | [`modules/core.md`](modules/core.md) |
 | IO | `include/io/`、`src/io/` | 字节传输、回调分发、CAN/串口/网络适配 | [`modules/io.md`](modules/io.md) |
@@ -35,8 +35,8 @@
 
 ## 当前基线摘要
 
-- 默认构建类型是 `infantry`；可选 `hero`、`sentry`、`project`。
-- `src/main.cpp` 默认加载 `configs/<type>.yaml`（也可用 `--config` 指定 YAML/JSON），先打印同目录全部配置文本，再整体验证并构造 CAN、串口、DJI 电机、遥控器和 IMU。
+- 车型完全由运行时配置选择；未指定参数时默认加载 `configs/infantry.yaml`，也可用 `--config` 指定 `hero`、`sentry`、`project` 或自定义 YAML/JSON。
+- `src/main.cpp` 先打印所选配置目录下的全部配置文本，再整体验证并构造 CAN、串口、DJI 电机、遥控器和 IMU。
 - CAN、串口和 DJI 电机采用“构造 → 连接 → 启动”阶段，不在构造函数中启动长期协程。
 - Robot 默认进入 `NoForce`，DJI 电机默认禁用；遥控器完成双开关加滚轮解锁手势后进入 `FollowGimbal`，遥控失联会退回 `NoForce`。
 - Infantry/Hero/Sentry 启用底盘、云台和发射，Project 当前只启用底盘；Sentry 额外保留旧工程副云台电机拓扑，但当前只绑定一个主云台实例。“启用”不等于功能已经完整。

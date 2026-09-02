@@ -54,14 +54,14 @@
 ## 当前无硬件验证
 
 ```sh
-xmake f -y -m debug --type=project
+xmake f -y -m debug
 xmake build -y unit-tests
 xmake run unit-tests
 xmake build -y gkd-roboctrl
 git diff --check
 ```
 
-涉及配置公共结构或模板实例化时，应对 `infantry`、`hero`、`sentry`、`project` 全部重复 Debug/Release 构建。`tests/unit_tests.cpp` 不打开 CAN 或串口，可在无硬件环境运行。
+涉及配置公共结构或模板实例化时，构建 Debug/Release 二进制即可；四种车型应通过 `--config configs/<type>.yaml` 分别完成配置加载/校验测试。`tests/unit_tests.cpp` 不打开 CAN 或串口，可在无硬件环境运行。
 
 测试使用 `assert`，Release 下通常定义 `NDEBUG` 时可能弱化断言，因此 CI 的 Debug 测试结果是逻辑检查主证据；Release 构建主要覆盖优化模式下的编译链接。若扩展测试框架，应让失败在所有构建模式都产生非零退出码。
 

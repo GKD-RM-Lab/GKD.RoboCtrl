@@ -140,12 +140,12 @@ inline configuration_result load_configuration(const std::filesystem::path& path
 }
 
 /**
- * @brief 获取当前编译车型对应的默认配置路径。
- * @return `configs/<BUILD_TYPE>.yaml`。
+ * @brief 获取未指定 `--config` 时使用的默认配置路径。
+ * @return `configs/infantry.yaml`（默认配置；其他车型通过 `--config` 选择）。
  */
 inline std::filesystem::path default_configuration_path() {
     return std::filesystem::path{"configs"} /
-           (std::string{TYPE_STR} + ".yaml");
+           (std::string{default_profile} + ".yaml");
 }
 
 /**

@@ -12,7 +12,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        type: [infantry, hero, sentry, project]
         mode: [debug, release]
 
     steps:
@@ -30,7 +29,7 @@ jobs:
           xmake-version: latest
 
       - name: Configure
-        run: xmake f -y -m ${{ matrix.mode }} --type=${{ matrix.type }}
+        run: xmake f -y -m ${{ matrix.mode }}
 
       - name: Build
         run: xmake build -y gkd-roboctrl
