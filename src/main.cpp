@@ -1,4 +1,4 @@
-#include "config/config.hpp"
+#include "config/runtime.hpp"
 #include "config/validate.hpp"
 #include "core/logger.h"
 #include "core/async.hpp"
@@ -12,7 +12,9 @@
 #include "io/serial.h"
 #include <concepts>
 #include <cxxopts.hpp>
+#include <filesystem>
 #include <print>
+#include <span>
 #include <stdexcept>
 
 #include <iostream>
@@ -26,25 +28,25 @@ using namespace roboctrl::log;
     if(!roboctrl::init(conf))   \
         return false
 
-static bool initialize_system(){
+static bool initialize_system(const config::runtime_config& system_config){
     try{
         config::validate_configuration(
-            config::cans,
-            config::serials,
-            config::dji_motors,
-            config::control_pad,
-            config::imu,
-            config::robot
+            std::span{system_config.cans},
+            std::span{system_config.serials},
+            std::span{system_config.dji_motors},
+            system_config.control_pad,
+            system_config.imu,
+            system_config.robot
         );
 
-        check_init(config::cans);
-        check_init(config::serials);
-        check_init(config::dji_motors);
-        check_init(config::control_pad);
-        check_init(config::imu);
+        check_init(std::span{system_config.cans});
+        check_init(std::span{system_config.serials});
+        check_init(std::span{system_config.dji_motors});
+        check_init(system_config.control_pad);
+        check_init(system_config.imu);
 
         roboctrl::connect_all<device::dji_motor>();
-        check_init(config::robot);
+        check_init(system_config.robot);
 
         roboctrl::start_all<io::can>();
         roboctrl::start_all<io::serial>();
@@ -72,7 +74,8 @@ int main(int argc,char** argv){
     options.add_options()
         ("h,help", "Print help")
         ("l,log", "Log level", cxxopts::value<std::string>()->default_value("info"))
-        ("f,filter","Filter for logger",cxxopts::value<std::string>()->default_value(""));
+        ("f,filter","Filter for logger",cxxopts::value<std::string>()->default_value(""))
+        ("c,config", "YAML or JSON configuration file", cxxopts::value<std::string>());
     
     auto result = options.parse(argc, argv);
 
@@ -100,7 +103,19 @@ int main(int argc,char** argv){
         logger::set_filter(result["filter"].as<std::string>());
     }
 
-    if(!initialize_system()){
+    const std::filesystem::path config_path = result.count("config")
+        ? std::filesystem::path{result["config"].as<std::string>()}
+        : config::default_configuration_path();
+    config::print_available_configurations(std::cout, config_path.parent_path());
+
+    auto loaded_config = config::load_configuration(config_path);
+    if (!loaded_config) {
+        std::println("Configuration error: {}", loaded_config.error());
+        return 1;
+    }
+
+    auto system_config = std::move(*loaded_config);
+    if(!initialize_system(system_config)){
         std::println("Initiation failed");
         return -1;
     }

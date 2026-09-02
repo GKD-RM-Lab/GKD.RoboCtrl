@@ -3,9 +3,9 @@
 #include "utils/singleton.hpp"
 #include "core/async.hpp"
 #include "core/logger.h"
-#include "device/motor/ref.hpp"
+#include "device/motor/base.hpp"
 #include <chrono>
-#include <string_view>
+#include <string>
 
 namespace roboctrl::ctrl{
 using namespace std::chrono_literals;
@@ -28,9 +28,9 @@ public:
         float jam_speed {1.0f};
         std::chrono::steady_clock::duration jam_release_time {50ms};
         std::chrono::steady_clock::duration control_time {1ms};
-        std::string_view left_friction_motor {"left_friction"};
-        std::string_view right_friction_motor {"right_friction"};
-        std::string_view trigger_motor {"trigger"};
+        std::string left_friction_motor {"left_friction"};
+        std::string right_friction_motor {"right_friction"};
+        std::string trigger_motor {"trigger"};
     };
 
     inline std::string desc()const{return "shoot";}
@@ -52,9 +52,9 @@ private:
     bool firing_ {false};
     bool friction_enabled_ {false};
     std::chrono::steady_clock::time_point jam_release_at_ {};
-    device::motor_ref left_friction_motor_;
-    device::motor_ref right_friction_motor_;
-    device::motor_ref trigger_motor_;
+    device::motor_base* left_friction_motor_ {nullptr};
+    device::motor_base* right_friction_motor_ {nullptr};
+    device::motor_base* trigger_motor_ {nullptr};
 
 };
 

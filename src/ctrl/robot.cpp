@@ -1,7 +1,5 @@
 #include "ctrl/robot.h"
 #include "core/async.hpp"
-#include "ctrl/chassis.h"
-#include "ctrl/gimbal.h"
 #include "ctrl/shoot.h"
 #include "device/controlpad.h"
 #include "device/motor/dji.h"
@@ -14,20 +12,23 @@ bool robot::init(const info_type& info){
     enable_gimbal_ = info.enable_gimbal;
     enable_shoot_ = info.enable_shoot;
 
-    if (info.enable_chassis && !roboctrl::init(info.chassis_info)) {
+    if (info.enable_chassis && !device::chassis_registry::init(info.chassis_type, info.chassis_info)) {
         return false;
     }
-    if (info.enable_gimbal && !roboctrl::init(info.gimbal_info)) {
+    if (info.enable_gimbal && !device::gimbal_registry::init(info.gimbal_type, info.gimbal_info)) {
         return false;
     }
+    chassis_ = device::chassis_registry::current();
+    gimbal_ = device::gimbal_registry::current();
     if (info.enable_shoot && !roboctrl::init(info.shoot_info)) {
         return false;
     }
 
     set_state(robot_state::NoForce);
 
-    roboctrl::get<device::control_pad>(control_pad_key_).on_update(
-        [this](const device::control_pad_state& input) { handle_control(input); });
+    roboctrl::init(motion_control::info_type{
+        .control_pad_key = control_pad_key_,
+        .enable_shoot = enable_shoot_});
     roboctrl::spawn(task());
 
     log_info("Robot initiated");
@@ -35,42 +36,13 @@ bool robot::init(const info_type& info){
     return true;
 }
 
-void robot::handle_control(const device::control_pad_state& input) {
-    const auto command = control_mapper_.update(input);
-    if (command.arm_requested && state_ == robot_state::NoForce) {
-        set_state(robot_state::FollowGimbal);
-        log_info("Control pad armed robot");
-    }
-    if (state_ == robot_state::NoForce) {
-        return;
-    }
-
-    if (enable_chassis_) {
-        roboctrl::get<chassis>().set_velocity(command.velocity);
-        roboctrl::get<chassis>().set_rotate_speed(command.rotate_speed);
-    }
-    if (enable_gimbal_) {
-        auto& gimbal = roboctrl::get<ctrl::gimbal>();
-        gimbal.add_yaw(command.yaw_delta);
-        if (command.use_pitch_target) {
-            gimbal.set_pitch(command.pitch_target);
-        } else {
-            gimbal.add_pitch(command.pitch_delta);
-        }
-    }
-    if (enable_shoot_) {
-        auto& shoot = roboctrl::get<ctrl::shoot>();
-        shoot.set_friction_enabled(command.friction_enabled);
-        shoot.set_firing(command.firing);
-    }
-}
-
 void robot::set_state(robot_state state) {
     state_ = state;
     if (state == robot_state::NoForce) {
-        control_mapper_.reset();
     }
     const bool enabled = state != robot_state::NoForce;
+    if (enable_chassis_ && chassis_) chassis_->set_enabled(enabled);
+    if (enable_gimbal_ && gimbal_) gimbal_->set_enabled(enabled);
     roboctrl::for_each_instance<device::dji_motor>([enabled](device::dji_motor& motor) {
         motor.set_enabled(enabled);
     });

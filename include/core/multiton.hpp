@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <format>
 #include <functional>
 #include <unordered_set>
@@ -65,7 +66,7 @@ template<typename T>
 concept multiton_info = requires(T info){
     typename T::key_type;
     typename T::owner_type;
-    {info.key()} -> std::same_as<typename T::key_type>;
+    {info.key()} -> std::convertible_to<typename T::key_type>;
 };
 
 /**
@@ -129,6 +130,10 @@ struct multiton_impl final :
     }
 
     static void init(std::initializer_list<info_type> infos) {
+        init(std::span{infos.begin(), infos.size()});
+    }
+
+    static void init(std::span<const info_type> infos) {
         std::lock_guard<std::mutex> lock{mutex_};
 
         std::unordered_set<key_type> pending_keys;
@@ -263,6 +268,15 @@ inline auto init(std::initializer_list<info_type> infos) -> bool{
             }
         }
     }
+    return true;
+}
+
+/**
+ * @brief 用运行时大小的连续配置批量初始化多例对象。
+ */
+template<multiton_info info_type>
+inline auto init(std::span<const info_type> infos) -> bool{
+    details::impl_t<info_type>::init(infos);
     return true;
 }
 

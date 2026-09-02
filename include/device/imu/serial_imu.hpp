@@ -1,17 +1,19 @@
 #pragma once
 
+#include <string>
+
 #include "device/imu/base.hpp"
 
 namespace roboctrl::device{
 class serial_imu : public imu_base {
 public:
     struct info_type{
-        using key_type = std::string_view;
+        using key_type = std::string;
         using owner_type = serial_imu;
 
-        std::string_view name;
-        std::string_view serial_name;
-        std::string_view key()const{
+        std::string name;
+        std::string serial_name;
+        const std::string& key()const{
             return name;
         }
     };

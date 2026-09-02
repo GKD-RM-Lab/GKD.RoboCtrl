@@ -4,23 +4,29 @@
 #include <cmath>
 #include <cstddef>
 #include <future>
+#include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
 #include <asio.hpp>
 
-#include "config/config.hpp"
+#include "config/runtime.hpp"
 #include "config/validate.hpp"
-#include "ctrl/chassis_kinematics.hpp"
 #include "ctrl/control_mapping.hpp"
 #include "ctrl/shoot_logic.hpp"
-#include "device/motor/ref.hpp"
+#include "device/motor/base.hpp"
+#include "device/imu/base.hpp"
+#include "device/controlpad.h"
+#include "utils/kinematics/mecanum.hpp"
+#include "utils/pid.h"
+#include "utils/ramp.hpp"
+#include "utils/controller.hpp"
 #include "io/base.hpp"
 
 using namespace std::chrono_literals;
 using roboctrl::awaitable;
 using roboctrl::device::motor_base;
-using roboctrl::device::motor_ref;
 
 namespace {
 
@@ -64,26 +70,22 @@ using fake_motor_b = fake_motor<2>;
 
 static_assert(roboctrl::device::motor<fake_motor_a>);
 static_assert(roboctrl::device::motor<fake_motor_b>);
-static_assert(sizeof(motor_ref) <= sizeof(void*) * 3);
-
-void test_motor_ref_type_erasure() {
+void test_motor_base_runtime_polymorphism() {
     fake_motor_a a{{"a"}};
     fake_motor_b b{{"b"}};
     a.set_measurements(1.0f, 2.0f, 3.0f);
     b.set_measurements(4.0f, 5.0f, 6.0f);
 
-    motor_ref a_ref{a};
-    motor_ref b_ref{b};
-    std::array<motor_ref, 2> motors{a_ref, b_ref};
+    std::array<motor_base*, 2> motors{&a, &b};
 
     asio::io_context context;
     auto done = asio::co_spawn(
         context,
         [&]() -> awaitable<void> {
-            co_await motors[0].set(7.0f);
-            co_await motors[1].set(8.0f);
-            co_await motors[0].enable();
-            co_await motors[1].enable();
+            co_await motors[0]->set(7.0f);
+            co_await motors[1]->set(8.0f);
+            co_await motors[0]->enable();
+            co_await motors[1]->enable();
         }(),
         asio::use_future);
     context.run();
@@ -92,17 +94,9 @@ void test_motor_ref_type_erasure() {
     assert(a.last_set == 7.0f);
     assert(b.last_set == 8.0f);
     assert(a.enabled && b.enabled);
-    assert(a_ref.angle() == 1.0f);
-    assert(b_ref.angle_speed() == 5.0f);
-    assert(b_ref.torque() == 6.0f);
-
-    bool unbound_threw = false;
-    try {
-        static_cast<void>(motor_ref{}.angle());
-    } catch (const std::logic_error&) {
-        unbound_threw = true;
-    }
-    assert(unbound_threw);
+    assert(motors[0]->angle() == 1.0f);
+    assert(motors[1]->angle_speed() == 5.0f);
+    assert(motors[1]->torque() == 6.0f);
 }
 
 void test_multiton_rejects_duplicate_before_construction() {
@@ -116,8 +110,8 @@ void test_multiton_rejects_duplicate_before_construction() {
 
     const fake_motor_a::info_type info{"registered"};
     roboctrl::init(info);
-    motor_ref inferred_ref{info};
-    assert(static_cast<bool>(inferred_ref));
+    motor_base* inferred_motor = &roboctrl::get<fake_motor_a>(info.name);
+    assert(inferred_motor != nullptr);
 }
 
 void test_combined_parser() {
@@ -136,14 +130,55 @@ void test_combined_parser() {
 }
 
 void test_chassis_speed_limit() {
-    const auto wheels = roboctrl::ctrl::mecanum_wheel_speeds(
-        {.x = 10.0f, .y = -4.0f}, 0.3f, 2.0f, 2.5f);
+    const auto wheels = roboctrl::utils::kinematics::inverse_mecanum(
+        {.x = 10.0f, .y = -4.0f}, 0.3f, 2.5f);
     const float peak = std::max({
         std::fabs(wheels.left_front),
         std::fabs(wheels.right_front),
         std::fabs(wheels.left_rear),
         std::fabs(wheels.right_rear)});
     assert(peak <= 2.5f + 1e-6f);
+
+    const auto base_wheels = roboctrl::utils::kinematics::inverse_mecanum(
+        {.x = 1.0f, .y = 0.0f}, 0.0f, 2.5f);
+    assert(base_wheels.left_front == base_wheels.right_front);
+}
+
+void test_device_input_abstractions() {
+    roboctrl::device::control_pad_state input;
+    input.ch0 = 11;
+    input.ch4 = -22;
+    input.s1 = 1;
+    assert(input.channel(roboctrl::device::control_channel::ch0) == 11);
+    assert(input.gimbal_pitch_wheel() == -22);
+
+    const roboctrl::device::euler_angle angle{.roll = 1.0f, .pitch = 2.0f, .yaw = 3.0f};
+    const roboctrl::device::three_axis vector{.x = 4.0f, .y = 5.0f, .z = 6.0f};
+    assert(angle.yaw == 3.0f && vector.z == 6.0f);
+}
+
+struct add_stage final : roboctrl::utils::control_stage<roboctrl::fp32> {
+    explicit add_stage(roboctrl::fp32 amount) : amount{amount} {}
+    roboctrl::fp32 update(roboctrl::fp32 input, roboctrl::fp32) override { return input + amount; }
+    void reset() override {}
+    roboctrl::fp32 amount;
+};
+
+void test_control_chain_and_explicit_dt() {
+    roboctrl::utils::linear_pid pid{{.kp = 1.0f, .ki = 1.0f, .kd = 0.0f,
+                                     .max_out = 10.0f, .max_iout = 10.0f}};
+    pid.set_target(1.0f);
+    pid.update(0.0f, 0.1f);
+    assert(std::fabs(pid.state() - 1.1f) < 1e-6f);
+
+    roboctrl::utils::ramp_f ramp{{.acc = 2.0f}};
+    ramp.update(10.0f, 0.5f);
+    assert(std::fabs(ramp.state() - 1.0f) < 1e-6f);
+
+    roboctrl::utils::runtime_control_chain<roboctrl::fp32> chain;
+    chain.add(std::make_unique<add_stage>(1.0f));
+    chain.add(std::make_unique<add_stage>(2.0f));
+    assert(std::fabs(chain.update(3.0f, 0.01f) - 6.0f) < 1e-6f);
 }
 
 void test_control_mapping_requires_arm_and_preserves_edges() {
@@ -195,28 +230,26 @@ void test_shoot_interlocks() {
     assert(!trigger_feed_allowed(true, false, true, true, false));
 }
 
-void test_selected_configuration() {
-    roboctrl::config::validate_configuration(
-        roboctrl::config::cans,
-        roboctrl::config::serials,
-        roboctrl::config::dji_motors,
-        roboctrl::config::control_pad,
-        roboctrl::config::imu,
-        roboctrl::config::robot);
-}
-
 void test_rejects_invalid_control_configuration() {
-    auto invalid_robot = roboctrl::config::robot;
-    invalid_robot.chassis_info.follow_direction = 0.0f;
+    auto config_directory = std::filesystem::current_path();
+    while (!std::filesystem::exists(config_directory / "configs")) {
+        const auto parent = config_directory.parent_path();
+        assert(parent != config_directory);
+        config_directory = parent;
+    }
+    const auto loaded = roboctrl::config::load_configuration(config_directory / "configs/infantry.yaml");
+    assert(loaded);
+    auto invalid_robot = loaded->robot;
+    invalid_robot.chassis_info.control_time = 0ns;
 
     bool threw = false;
     try {
         roboctrl::config::validate_configuration(
-            roboctrl::config::cans,
-            roboctrl::config::serials,
-            roboctrl::config::dji_motors,
-            roboctrl::config::control_pad,
-            roboctrl::config::imu,
+            loaded->cans,
+            loaded->serials,
+            loaded->dji_motors,
+            loaded->control_pad,
+            loaded->imu,
             invalid_robot);
     } catch (const std::invalid_argument&) {
         threw = true;
@@ -224,15 +257,41 @@ void test_rejects_invalid_control_configuration() {
     assert(threw);
 }
 
+void test_runtime_configuration_files() {
+    auto config_directory = std::filesystem::current_path();
+    while (!std::filesystem::exists(config_directory / "configs")) {
+        const auto parent = config_directory.parent_path();
+        assert(parent != config_directory);
+        config_directory = parent;
+    }
+    for (const auto* path : {
+             "configs/infantry.yaml",
+             "configs/hero.yaml",
+             "configs/sentry.yaml",
+             "configs/project.yaml",
+        }) {
+        const auto config = roboctrl::config::load_configuration(config_directory / path);
+        if (!config) {
+            std::cerr << path << ": " << config.error() << '\n';
+        }
+        assert(config);
+        assert(config->schema_version == 1);
+        assert(!config->cans.empty());
+        assert(!config->dji_motors.empty());
+    }
+}
+
 } // namespace
 
 int main() {
-    test_motor_ref_type_erasure();
+    test_motor_base_runtime_polymorphism();
     test_multiton_rejects_duplicate_before_construction();
     test_combined_parser();
     test_chassis_speed_limit();
+    test_device_input_abstractions();
+    test_control_chain_and_explicit_dt();
     test_control_mapping_requires_arm_and_preserves_edges();
     test_shoot_interlocks();
-    test_selected_configuration();
     test_rejects_invalid_control_configuration();
+    test_runtime_configuration_files();
 }

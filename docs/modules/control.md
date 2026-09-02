@@ -8,27 +8,29 @@ Control 层组合设备引用并表达整机行为。它不解析总线报文。
 
 ## Robot 与安全状态
 
-`robot::info_type` 分别声明是否启用底盘、云台和发射。初始化只启动启用的子系统，订阅 ControlPad 输入，并默认进入 `NoForce`。状态切换会统一禁用或启用所有 DJI 电机；这只是软件安全门，不能替代硬件急停和台架验证。
+`robot::info_type` 分别声明是否启用底盘、云台和发射，并含 `chassis_type`、`gimbal_type` 类型契约。初始化通过 `device::chassis_registry`、`device::gimbal_registry` 选择具体实现，并保存抽象指针；Robot 不再硬编码具体底盘/云台类型。状态切换会统一禁用或启用所有 DJI 电机；这只是软件安全门，不能替代硬件急停和台架验证。
 
-`robot_state` 当前包含 `NoForce`、`FinishInit`、`FollowGimbal`、`Search`、`Idle`、`NotFollow`。双开关置下且滚轮为 `-660` 时从 `NoForce` 进入 `FollowGimbal`；ControlPad 连续 100 ms 无有效报文时回到 `NoForce`。其他枚举状态仍没有完整转移规则。`robot` 还提供底盘速度、云台相对角和旋转速度的转发接口；调用这些接口前必须确认对应子系统在当前车型启用。
+`robot_state` 当前包含 `NoForce`、`FinishInit`、`FollowGimbal`、`Search`、`Idle`、`NotFollow`。双开关置下且俯仰拨轮为 `-660` 时从 `NoForce` 进入 `FollowGimbal`；ControlPad 连续 100 ms 无有效报文时回到 `NoForce`。其他枚举状态仍没有完整转移规则。`robot` 仅保留面向抽象底盘的兼容转发接口；调用这些接口前必须确认对应子系统在当前车型启用。
 
 切换到 `NoForce` 会调用每台 DJI 电机的 `disable()`，清空 PID、当前输出并关闭 `enabled_`；切换到任意其他枚举值会使能电机。键鼠映射保留旧工程的 WASD、R 自旋切换、F 摩擦轮切换、鼠标云台与开火；遥控映射保留通道缩放、S1 自旋、S2 摩擦轮和滚轮开火。所有非零命令都受解锁门限制。
 
 成熟度：整机初始化、遥控入口和统一安全门 **已接入**；完整比赛业务状态机仍是**部分实现**。
 
-## Chassis
+## Motion control 与 Chassis
 
-底盘在初始化时将四个具体 DJI 电机绑定为 `motor_ref`，周期循环不再重复写具体电机模板参数。麦轮分解与限速位于纯函数 `mecanum_wheel_speeds()`，便于无硬件测试。`NoForce` 分支只设置零目标。
+`motion_control` 是常驻后台协程：周期读取 ControlPad 快照，经 `control_mapper` 生成统一控制命令，再分别分发平面移动、旋转、yaw、pitch 和发射命令。它处理解锁门、失联和 `NoForce` 安全输出；不是一个 driver-like 的设备接口集合。
 
-输入 `velocity_` 先按 `gimbal_yaw_` 旋转到车体坐标。显式自旋命令非零时记录方向；命令归零但云台尚未回中时沿原方向继续，进入 0.005 rad 范围后由角度 PID 跟随云台回中，再与平移速度合成四轮目标。若任一绝对轮速超过 `max_wheel_speed_`（当前 2.5），四轮按统一比例缩放以保持方向关系。右前、右后电机在实际下发时取反，属于底盘装配方向约定。
+底盘设备在初始化时将四个具体 DJI 电机绑定为 `motor_base*`，周期循环只负责麦轮分解、限速和电机目标下发。纯函数 `utils::kinematics::inverse_mecanum()` 位于基础库，便于无硬件测试。`NoForce` 分支只设置零目标。
 
-控制循环周期由车型配置给出，当前均为 2 ms。NoForce 时每轮为四台电机设置零目标并提前返回；由于 DJI 组层还有禁用/离线置零，这形成两层软件保护。`chassis_kinematics.hpp` 是无硬件纯函数，运动学或限速变化应优先在这里添加测试。
+当前底盘设备不读取云台角度，也不包含云台跟随 PID；坐标变换和跟随策略应在 `motion_control` 或更高层完成。若任一绝对轮速超过 `max_wheel_speed_`（当前 2.5），四轮按统一比例缩放以保持方向关系。右前、右后电机在实际下发时取反，属于底盘装配方向约定。
 
-成熟度：**部分实现**。运动学、云台跟随和比例限速已接入；尚缺控制周期抖动监控、功率限制和硬件符号标定。
+控制循环周期由车型配置给出，当前均为 2 ms。NoForce 时每轮为四台电机设置零目标并提前返回；由于 DJI 组层还有禁用/离线置零，这形成两层软件保护。`utils/kinematics/mecanum.hpp` 是无硬件纯函数，运动学或限速变化应优先在这里添加测试。
+
+成熟度：**部分实现**。运动学和比例限速已接入；云台跟随策略、控制周期抖动监控、功率限制和硬件符号标定仍待完善。
 
 ## Shoot
 
-摩擦轮和拨弹电机同样保存为 `motor_ref`。摩擦轮开关和拨弹请求是两个独立状态，默认均为 false；`NoForce` 会重置斜坡、设置三台电机为零并跳过本轮后续命令，避免零命令被覆盖。
+摩擦轮和拨弹电机同样保存为 `motor_base*`。摩擦轮开关和拨弹请求是两个独立状态，默认均为 false；`NoForce` 会重置斜坡、设置三台电机为零并跳过本轮后续命令，避免零命令被覆盖。
 
 非 NoForce 状态下，`friction_ramp_` 以配置的最大变化率逐渐逼近 `friction_max_speed`，左右摩擦轮目标符号相反。只有请求开火、摩擦轮达到速度阈值、三台电机在线且不在堵转暂停期时，拨弹轮才获得 `trigger_speed`。拨弹反馈电流超过 4000 且转速低于 1 rpm 时暂停 50 ms，保留旧工程的堵转保护。
 
@@ -36,16 +38,16 @@ Control 层组合设备引用并表达整机行为。它不解析总线报文。
 
 ## Gimbal、Power、Referee
 
-Gimbal 初始化会绑定 IMU、yaw/pitch 电机和两个角度 PID。第一组完整在线反馈用于无冲击地锁定当前 yaw/pitch 目标并记录底盘相对零位；运行循环读取 IMU 姿态，角度外环输出电机速度目标，并把 yaw 电机相对角同步给底盘。`NoForce` 或任一依赖离线时清 PID 并下发零目标。该链路已编译，但 PID、方向、编码器零位仍未台架标定。
+Gimbal 初始化会绑定 IMU、yaw/pitch 电机和两个角度 PID。第一组完整在线反馈用于无冲击地锁定当前 yaw/pitch 目标；运行循环读取 IMU 姿态，角度外环输出电机速度目标。`NoForce` 或任一依赖离线时清 PID 并下发零目标。云台不再反向驱动底盘，跟随策略由 `motion_control` 决定。该链路已编译，但 PID、方向、编码器零位仍未台架标定。
 
-`power_manager.h` 是尚未迁移到当前命名空间和设备类型的旧接口，引用 `Hardware::DJIMotor`、`ControllerList`、`Robot::Robot_set` 等当前仓库未定义类型；对应 `.cpp` 为空，且头文件不在主程序编译路径中。旧工程虽计算了功率分配结果，但实际电机命令仍旁路使用 PID 输出，因此本次没有把它包装成“已生效”功能。`referee.h` 只有 `#pragma once`。这两者都是**接口骨架/遗留设计材料**，不能直接 include 后使用。
+`power_manager.h` 是尚未迁移到当前命名空间和设备类型的旧接口，引用 `Hardware::DJIMotor`、`ControllerList`、`Robot::Robot_set` 等当前仓库未定义类型；对应 `.cpp` 为空，且头文件不在主程序编译路径中。旧工程虽计算了功率分配结果，但实际电机命令仍旁路使用 PID 输出，因此本次没有把它包装成“已生效”功能。功率管理仍属于待重新设计的控制子系统。
 
 ## 控制参数与单位
 
 - `robot::set_velocity(x, y)` 与底盘轮速上限使用的最终单位需由机械和电机半径标定确认；代码以 `motor_base::linear_speed()` 的 m/s 语义设计。
-- `gimbal_yaw` 和云台 PID 使用 rad。
+- 云台 yaw/pitch 目标和 PID 使用 rad。
 - `rotate_speed` 直接参与轮速合成，当前未乘几何半径；其比例含义需通过底盘模型/标定固定。
-- 控制周期由配置给出，但 PID 实现没有显式 `dt`，参数仍与实际周期耦合。
+- 控制周期由配置给出，底盘、云台、发射和电机 PID 通过显式 `dt` 更新；参数仍需结合实际周期和硬件反馈标定。
 
 ## 修改 Control 时的检查清单
 

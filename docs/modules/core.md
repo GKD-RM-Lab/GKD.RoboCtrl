@@ -31,9 +31,9 @@ Core 提供所有上层模块共享的运行时基础：单线程异步上下文
 ```cpp
 struct info_type {
     using owner_type = my_device;
-    using key_type = std::string_view;
-    std::string_view name;
-    std::string_view key() const { return name; }
+    using key_type = std::string;
+    std::string name;
+    const std::string& key() const { return name; }
 };
 
 explicit my_device(const info_type& info);
@@ -45,11 +45,11 @@ explicit my_device(const info_type& info);
 
 注意事项：
 
-- 单个和批量初始化都会拒绝重复 key；批量初始化在构造首个对象前完成整组重复检查。
+- 单个和批量初始化都会拒绝重复 key；批量初始化接受 `initializer_list` 或 `std::span<const info_type>`，后者用于 YAML/JSON 运行时 vector，并在构造首个对象前完成整组重复检查。
 - `get()` 返回长期引用，依赖实例不被删除；目前没有卸载/重建生命周期。
 - map 有互斥保护，`for_each_instance` 调用回调期间也持锁。回调不能重入同一 owner 类型的 multiton 操作，否则有死锁风险；项目整体也不能据此推断所有对象线程安全。
 - `connect_all<T>()` 与 `start_all<T>()` 分别用于连接依赖和启动任务，仅对实现对应接口的多例类型可用。
-- `instance_ref<T>` 是按 key 延迟取得具体 multiton 类型的轻量引用；跨电机类型的统一接口使用 `device::motor_ref`。
+- `instance_ref<T>` 是按 key 延迟取得具体 multiton 类型的轻量引用；跨电机类型的统一接口使用非拥有型 `device::motor_base*`。
 
 成熟度：主多例/单例路径、分阶段启动辅助和 `instance_ref` **已接入**；卸载和初始化回滚仍未实现。
 
@@ -66,6 +66,6 @@ explicit my_device(const info_type& info);
 - 所有使用 `roboctrl::get/init/spawn` 的模块是否仍满足 concept。
 - 初始化失败是否能在进入事件循环前被观察。
 - `connect()` / `start()` 是否幂等，且调用顺序是否由入口明确保证。
-- key 类型和生命周期是否安全，尤其是 `string_view` 是否引用静态/长期存储。
+- key 类型和生命周期是否安全；运行时文件配置应使用拥有型 `std::string`，不要把临时解析缓冲区暴露成 `string_view`。
 - 是否改变任务调度、异常、停止或对象生命周期语义。
 - 同步更新 `docs/architecture.md` 和依赖 Core 的模块文档。

@@ -1,14 +1,14 @@
 #pragma once
 
 #include <string>
-#include <string_view>
 
 #include "core/async.hpp"
-#include "ctrl/chassis.h"
 #include "ctrl/control_mapping.hpp"
-#include "ctrl/gimbal.h"
+#include "ctrl/motion_control.h"
 #include "ctrl/shoot.h"
+#include "device/chassis.hpp"
 #include "device/controlpad.h"
+#include "device/gimbal.hpp"
 #include "utils/singleton.hpp"
 #include "utils/utils.hpp"
 
@@ -28,10 +28,14 @@ public:
     robot() = default;
     struct info_type{
         using owner_type = robot;
-        gimbal::info_type gimbal_info;
-        chassis::info_type chassis_info;
+        device::imu_gimbal::info_type gimbal_info;
+        device::mecanum_chassis::info_type chassis_info;
         shoot::info_type shoot_info;
-        std::string_view control_pad_key {"serial1"};
+        /// 配置选择的具体底盘类；当前仅实现标准麦轮底盘。
+        std::string chassis_type {"ctrl.standard_mecanum_chassis.v1"};
+        /// 配置选择的具体云台类；当前仅实现标准双轴 IMU 云台。
+        std::string gimbal_type {"ctrl.standard_imu_2axis_gimbal.v1"};
+        std::string control_pad_key {"control_pad"};
         bool enable_chassis {true};
         bool enable_gimbal {false};
         bool enable_shoot {false};
@@ -42,31 +46,27 @@ public:
 
     roboctrl::awaitable<void> task();
     inline void set_velocity(fp32 x,fp32 y){
-        roboctrl::get<chassis>().set_velocity({x,y});
+        if (chassis_) chassis_->set_planar_velocity({x,y});
     }
     inline void set_velocity(vectorf velocity){
-        roboctrl::get<chassis>().set_velocity(velocity);
+        if (chassis_) chassis_->set_velocity(velocity);
     }
 
-    inline vectorf velocity()const{return roboctrl::get<chassis>().velocity();}
+    inline vectorf velocity()const{return chassis_ ? chassis_->velocity() : vectorf{};}
 
-    inline fp32 gimbal_yaw()const{return roboctrl::get<chassis>().gimbal_yaw();}
-    inline void set_gimbal_yaw(fp32 yaw){roboctrl::get<chassis>().set_gimbal_yaw(yaw);}
-
-    inline void set_chassis_rotate_speed(fp32 speed){roboctrl::get<chassis>().set_rotate_speed(speed);}
-    inline fp32 chassis_rotate_speed()const{return roboctrl::get<chassis>().rotate_speed();}
+    inline void set_chassis_rotate_speed(fp32 speed){if (chassis_) chassis_->set_rotate_speed(speed);}
+    inline fp32 chassis_rotate_speed()const{return chassis_ ? chassis_->rotate_speed() : 0.0f;}
 
     robot_state state()const{return state_;}
     void set_state(robot_state state);
 private:
-    void handle_control(const device::control_pad_state& input);
-
     robot_state state_ {robot_state::NoForce};
-    std::string_view control_pad_key_;
+    std::string control_pad_key_;
     bool enable_chassis_ {false};
     bool enable_gimbal_ {false};
     bool enable_shoot_ {false};
-    control_mapper control_mapper_;
+    device::chassis_base* chassis_ {nullptr};
+    device::gimbal_base* gimbal_ {nullptr};
 };
 
 static_assert(utils::singleton<robot>);

@@ -180,29 +180,19 @@ xxx_io.on_data([&](const xxx_pkg& pkg){
 
 马达设备有相似的功能，因此可以被进一步抽象。
 
-#### 类型擦除引用 `motor_ref`
+#### 电机基类指针与运行时多态
 
-控制模块如果保存的是 `motor_ref`，只需在初始化时指定一次实际电机类型，之后不再需要重复写
-`set_motor<具体电机类型>(名称, 目标值)`：
-
-```cpp
-#include "device/motor/ref.hpp"
-
-auto left_front = roboctrl::device::motor_ref::from<roboctrl::device::dji_motor>(
-    "left_front_motor");
-
-co_await left_front.set(1.5f);
-float speed = left_front.linear_speed();
-bool offline = left_front.offline();
-```
-
-如果手中已有某个电机的 `info_type`，还可以让构造函数自动推导实际电机类型：
+控制模块保存非拥有型 `motor_base*`，只需在初始化时指定一次实际电机类型，之后通过虚函数统一访问：
 
 ```cpp
-roboctrl::device::motor_ref motor{motor_info};
-co_await motor.set(1.5f);
+#include "device/motor/base.hpp"
+
+auto* left_front = &roboctrl::get<roboctrl::device::dji_motor>("left_front_motor");
+
+co_await left_front->set(1.5f);
+float speed = left_front->linear_speed();
+bool offline = left_front->offline();
 ```
 
-`motor_ref` 是非拥有型引用，不负责创建或销毁电机；应当在对应 multiton 电机实例完成初始化后绑定。
-它可以复制并放入容器，统一提供 `set()`、`enable()`、角度、速度、扭矩和离线状态接口。
+`motor_base*` 是非拥有型指针，不负责创建或销毁电机；应当在对应 multiton 电机实例完成初始化后绑定。它可以复制并放入容器，统一提供 `set()`、`enable()`、角度、速度、扭矩和离线状态接口。
 原有 `set_motor<T>()` 仍保留用于兼容旧代码。

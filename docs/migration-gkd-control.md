@@ -10,7 +10,13 @@
 - 云台：IMU yaw/pitch 角度外环、DJI 电机速度目标、相对 yaw 向底盘同步、依赖离线时零输出。
 - 发射：摩擦轮斜坡、实际转速就绪门、连续拨弹命令、过流低速堵转检测与 50 ms 暂停。
 
-迁移采用当前仓库的单线程 Asio、multiton/singleton、阶段化启动和 `motor_ref`，没有复制旧工程的线程、硬件管理器或全局 `Robot_set`。
+迁移采用当前仓库的单线程 Asio、multiton/singleton、阶段化启动和 `motor_base` 运行时多态，没有复制旧工程的线程、硬件管理器或全局 `Robot_set`。
+
+## 配置迁移到 YAML
+
+`GKD_Control/include/configs/config_<type>.hpp` 是 YAML 配置的硬件拓扑参考：CAN 名、串口、底盘轮序、电机型号/ID、半径、PID 和控制周期被映射到 `configs/<type>.yaml` 的现有 `info_type` 字段。新格式不再另建 `*Spec`；例如旧 `DJIMotorConfig` 映射为 `dji_motors` 中一项，旧 `ChassisConfig`/`GimbalConfig`/`ShootConfig` 中当前控制层已经拥有的字段分别映射到 `robot.*_info`。
+
+这不是旧文件的逐字段机械复制。旧工程含有目前 `info_type` 未表达的 `YawOffSet`、相对角 PID、视觉端口、超级电容、裁判、双云台/M9025 与搜索策略；这些字段不会悄悄写入 YAML，也不会因文件存在而生效。Sentry YAML 仍仅配置已接入的底盘，保留旧双云台配置作为后续具体 `gimbal` 子类的设计输入。旧 PID、方向和速度单位必须以当前控制循环的单位和安全台架重新标定，不能把“旧工程参数存在”当作实车验证。
 
 ## 明确未迁移
 
@@ -23,4 +29,4 @@
 
 ## 验证边界
 
-控制映射、发射互锁、配置校验和既有纯逻辑由无硬件单元测试覆盖；四个 `BUILD_TYPE` 的配置与单测目标均完成 Debug/Release 独立编译和运行。macOS 上无法完整链接 Linux SocketCAN 主目标，且本次没有运行主程序、台架或实车验证。CAN ID、电机方向、PID、IMU 角速度缩放和摩擦轮/拨弹阈值必须在目标 Linux 主机与安全台架上复核后才能上车。
+控制映射、发射互锁、配置校验与 YAML 解析由无硬件单元测试覆盖。macOS 上无法完整构建 Linux SocketCAN 主目标，且本次没有运行主程序、台架或实车验证。CAN ID、电机方向、PID、IMU 角速度缩放和摩擦轮/拨弹阈值必须在目标 Linux 主机与安全台架上复核后才能上车。

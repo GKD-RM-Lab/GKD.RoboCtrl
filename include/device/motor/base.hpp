@@ -68,6 +68,17 @@ protected:
     float radius_ {}; // m
 
 public:
+    virtual ~motor_base() = default;
+
+    /** Set the device-specific target (usually speed or current). */
+    virtual awaitable<void> set(fp32 target) = 0;
+    /** Enable output. */
+    virtual awaitable<void> enable() = 0;
+    /** Disable output and clear any pending command. */
+    virtual void disable() {}
+    /** Common safety gate used by the control layer. */
+    virtual void set_enabled(bool enabled) { if (!enabled) disable(); }
+
     /**
      * @brief 获取电机角度（单位为rad）
      * 

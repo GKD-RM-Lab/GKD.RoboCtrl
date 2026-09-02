@@ -14,7 +14,7 @@ constexpr fp32 _rpm_to_rad_s = 2.f * Pi_f / 60.f;
 constexpr fp32 _ecd_8192_to_rad  = 2.f * Pi_f / 8192.f;
 
 M9025::M9025(const info_type& info):
-    motor_base{1ms, info.radius},
+    motor_base{info.control_time, info.radius},
     info_{info},
     pid_{info.pid_params}
 {
@@ -23,7 +23,8 @@ M9025::M9025(const info_type& info):
         this->angle_speed_ = _rpm_to_rad_s * static_cast<float>(utils::make_i16(pkg.speed_h, pkg.speed_l));
         this->torque_ = utils::make_i16(pkg.current_h, pkg.current_l);
 
-        this->pid_.update(this->angle_speed_);
+        const fp32 dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(info_.control_time).count();
+        this->pid_.update(this->angle_speed_, dt);
 
         std::array<std::byte,8> data{};
 
@@ -40,7 +41,8 @@ M9025::M9025(const info_type& info):
 roboctrl::awaitable<void> M9025::set(fp32 speed)
 {
     pid_.set_target(speed);
-    pid_.update(this->angle_speed_);
+    const fp32 dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(info_.control_time).count();
+    pid_.update(this->angle_speed_, dt);
 
     co_return;
 }

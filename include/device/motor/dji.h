@@ -7,7 +7,7 @@
 
 #include <chrono>
 #include <cstdint>
-#include <string_view>
+#include <string>
 
 #include "base.hpp"
 #include "core/logger.h"
@@ -33,17 +33,17 @@ public:
      * @brief 电机初始化参数。
      */
     struct info_type{
-        using key_type = std::string_view;
+        using key_type = std::string;
         using owner_type = dji_motor;
 
         type type_;
         int id;
-        std::string_view name;
-        std::string_view can_name;
+        std::string name;
+        std::string can_name;
         fp32 radius;
         utils::linear_pid::params_type pid_params;
         std::chrono::steady_clock::duration control_time;
-        inline std::string_view key()const{return name;}
+        inline const std::string& key()const{return name;}
     };
 
     /**
@@ -61,11 +61,11 @@ public:
     /**
      * @brief 设置目标电流或速度（取决于电调模式）。
      */
-    awaitable<void> set(fp32 speed);
+    awaitable<void> set(fp32 speed) override;
     awaitable<void> task();
-    awaitable<void> enable(){ enabled_ = true; co_return; }
-    void disable();
-    void set_enabled(bool enabled);
+    awaitable<void> enable() override { enabled_ = true; co_return; }
+    void disable() override;
+    void set_enabled(bool enabled) override;
 
     inline int16_t current() const {
         return enabled_ && !offline() ? current_ : int16_t{0};
@@ -95,14 +95,14 @@ public:
      * @brief 分组初始化参数。
      */
     struct info_type{
-        using key_type = std::string_view;
+        using key_type = std::string;
         using owner_type = dji_motor_group;
 
-        std::string_view can_name;
+        std::string can_name;
 
-        inline std::string_view key()const{return can_name;}
+        inline const std::string& key()const{return can_name;}
 
-        static inline info_type make(std::string_view can_name){
+        static inline info_type make(std::string can_name){
             return{.can_name = can_name};
         }
     };

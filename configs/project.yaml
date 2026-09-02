@@ -1,0 +1,22 @@
+schema_version: 1
+profile: project
+
+cans:
+  - {name: CAN_CHASSIS, interface_name: CAN_CHASSIS}
+serials:
+  - {name: serial1, device: /dev/IMU_HERO, baud_rate: 115200}
+dji_motors:
+  - {type_: M3508, id: 2, name: left_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 1, name: right_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 4, name: right_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 3, name: left_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+
+control_pad: {name: control_pad, serial_name: serial1}
+imu: {name: imu, serial_name: serial1}
+robot:
+  chassis_info:
+    control_time: {count: 2, unit: milliseconds}
+  control_pad_key: control_pad
+  enable_chassis: true
+  enable_gimbal: false
+  enable_shoot: false

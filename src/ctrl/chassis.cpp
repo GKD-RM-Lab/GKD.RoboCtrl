@@ -1,16 +1,20 @@
-#include "ctrl/chassis.h"
-#include "ctrl/chassis_kinematics.hpp"
+#include "device/chassis.hpp"
 #include "core/async.hpp"
-#include "ctrl/gimbal.h"
-#include "ctrl/robot.h"
+#include "utils/kinematics/mecanum.hpp"
 #include "device/motor/base.hpp"
 #include "device/motor/dji.h"
 #include "utils/utils.hpp"
+#include <any>
+#include <mutex>
+#include <unordered_map>
+#include <utility>
 
-using namespace roboctrl::ctrl;
 using namespace roboctrl::device;
 
-roboctrl::awaitable<void> chassis::task()
+ROBOCTRL_REGISTER_CHASSIS("device.standard_mecanum_chassis.v1", roboctrl::device::mecanum_chassis);
+ROBOCTRL_REGISTER_CHASSIS("ctrl.standard_mecanum_chassis.v1", roboctrl::device::mecanum_chassis);
+
+roboctrl::awaitable<void> mecanum_chassis::task()
 {
     while(true){
         co_await speed_decomposition();
@@ -18,56 +22,73 @@ roboctrl::awaitable<void> chassis::task()
     }
 }
 
-bool chassis::init(const chassis::info_type& info){
-    left_front_motor_ = motor_ref::from<dji_motor>(info.left_front_motor);
-    right_front_motor_ = motor_ref::from<dji_motor>(info.right_front_motor);
-    left_rear_motor_ = motor_ref::from<dji_motor>(info.left_rear_motor);
-    right_rear_motor_ = motor_ref::from<dji_motor>(info.right_rear_motor);
-    follow_pid_ = utils::rad_pid{info.follow_pid};
-    follow_pid_.set_target(0.0f);
-    follow_direction_ = info.follow_direction;
-    follow_settle_angle_ = info.follow_settle_angle;
+bool mecanum_chassis::init(const mecanum_chassis::info_type& info){
+    left_front_motor_ = &roboctrl::get<dji_motor>(info.left_front_motor);
+    right_front_motor_ = &roboctrl::get<dji_motor>(info.right_front_motor);
+    left_rear_motor_ = &roboctrl::get<dji_motor>(info.left_rear_motor);
+    right_rear_motor_ = &roboctrl::get<dji_motor>(info.right_rear_motor);
     control_time_ = info.control_time;
     log_info("Chassis initiated");
     roboctrl::spawn(task());
     return true;
 }
 
-roboctrl::fp32 chassis::resolved_rotate_speed() {
-    if (rotate_speed_ != 0.0f) {
-        last_rotate_direction_ = std::copysign(1.0f, rotate_speed_);
-        return rotate_speed_;
-    }
-    if (last_rotate_direction_ != 0.0f && std::fabs(gimbal_yaw_) > follow_settle_angle_) {
-        return last_rotate_direction_;
-    }
-    last_rotate_direction_ = 0.0f;
-    follow_pid_.update(gimbal_yaw_);
-    return follow_pid_.state() * follow_direction_;
+namespace {
+std::unordered_map<std::string, roboctrl::device::chassis_registry::factory>& chassis_factories() {
+    static std::unordered_map<std::string, roboctrl::device::chassis_registry::factory> value;
+    return value;
+}
+std::mutex& chassis_factories_mutex() { static std::mutex mutex; return mutex; }
+roboctrl::device::chassis_base*& current_chassis() { static roboctrl::device::chassis_base* value = nullptr; return value; }
 }
 
-roboctrl::awaitable<void> chassis::speed_decomposition(){
-    if (roboctrl::get<robot>().state() == robot_state::NoForce) {
-        last_rotate_direction_ = 0.0f;
-        follow_pid_.clean();
-        follow_pid_.set_target(0.0f);
-        co_await left_front_motor_.set(0.0f);
-        co_await right_front_motor_.set(0.0f);
-        co_await left_rear_motor_.set(0.0f);
-        co_await right_rear_motor_.set(0.0f);
+bool chassis_registry::register_type(std::string type, factory creator) {
+    std::lock_guard lock{chassis_factories_mutex()};
+    return chassis_factories().emplace(std::move(type), std::move(creator)).second;
+}
+
+chassis_base* chassis_registry::current() { return current_chassis(); }
+
+chassis_base* chassis_registry::create(std::string_view type, const std::any& info) {
+    factory creator;
+    {
+        std::lock_guard lock{chassis_factories_mutex()};
+        auto it = chassis_factories().find(std::string{type});
+        if (it == chassis_factories().end()) return nullptr;
+        creator = it->second;
+    }
+    return creator(info);
+}
+
+bool chassis_registry::init(std::string_view type, const mecanum_chassis::info_type& info) {
+    return init(type, std::any{info});
+}
+
+bool chassis_registry::init(std::string_view type, const std::any& info) {
+    auto* result = create(type, info);
+    current_chassis() = result;
+    return result != nullptr;
+}
+
+roboctrl::awaitable<void> mecanum_chassis::speed_decomposition(){
+    if (!enabled_) {
+        co_await left_front_motor_->set(0.0f);
+        co_await right_front_motor_->set(0.0f);
+        co_await left_rear_motor_->set(0.0f);
+        co_await right_rear_motor_->set(0.0f);
         co_return;
     }
 
-    const auto wheels = mecanum_wheel_speeds(
-        velocity_, gimbal_yaw_, resolved_rotate_speed(), max_wheel_speed_);
+    const auto wheels = utils::kinematics::inverse_mecanum(
+        velocity_, rotate_speed_, max_wheel_speed_);
 
     log_debug("left_front_motor : {}",wheels.left_front);
     log_debug("right_front_motor : {}",-wheels.right_front);
     log_debug("left_rear_motor : {}",wheels.left_rear);
     log_debug("right_rear_motor : {}",-wheels.right_rear);
 
-    co_await left_front_motor_.set(wheels.left_front);
-    co_await right_front_motor_.set(-wheels.right_front);
-    co_await left_rear_motor_.set(wheels.left_rear);
-    co_await right_rear_motor_.set(-wheels.right_rear);
+    co_await left_front_motor_->set(wheels.left_front);
+    co_await right_front_motor_->set(-wheels.right_front);
+    co_await left_rear_motor_->set(wheels.left_rear);
+    co_await right_rear_motor_->set(-wheels.right_rear);
 }

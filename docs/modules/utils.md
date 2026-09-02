@@ -9,7 +9,7 @@ Utils 提供 PID、Ramp、回调、字节转换、数学和类型约束。
 - `from_bytes<T>()` 要求输入长度恰好等于 `sizeof(T)`，不匹配时抛出 `invalid_argument`。
 - `to_bytes()` 提供返回固定数组和写入既有容器两种形式，容器不足时抛出异常。
 - `callback` 将同步函数包装为协程；一次调用中的回调按注册顺序执行。
-- PID 当前沿用固定采样间隔风格，没有显式 `dt`。在控制周期没有测量和约束前，不应把参数解释成连续时间 PID。
+- PID 与 Ramp 支持显式 `dt`；控制任务应传入配置或调度器测得的采样周期，不应让控制行为隐式依赖调用次数。
 
 ## 字节与数值工具
 
@@ -32,9 +32,11 @@ Utils 提供 PID、Ramp、回调、字节转换、数学和类型约束。
 
 `utils::controller` 要求 `input_type`、`state_type`、`params_type`、参数构造、`update()` 和 `state()`。`control_chain` 试图串联多个满足 concept 的控制器；新增组合用法前应补模板实例化测试。
 
-`pid_base` 计算比例、积分和误差差分，先限制积分再限制总输出；`clean()` 会清空目标、积分、上次误差和输出。`linear_pid` 使用普通目标差，`rad_pid` 把误差包裹到 `[-π, π]`。它没有显式时间步，`ki/kd` 数值依赖实际调用周期。
+`pid_base` 计算比例、积分和误差差分，显式 `update(current, dt)` 使用秒为单位的时间步，并保留单参数调用作为旧行为兼容；先限制积分再限制总输出。`clean()` 会清空目标、积分、上次误差和输出。`linear_pid` 使用普通目标差，`rad_pid` 把误差包裹到 `[-π, π]`。
 
-`ramp<T>` 用 `steady_clock` 的真实时间差限制变化率，适合软启动。首次构造会记录时间；`reset()` 清输出但不重置 `last_update_`，若行为需要完全重新计时必须显式设计。
+`ramp<T>` 的 `update(target, dt)` 使用显式时间步限制变化率，并保留基于 `steady_clock` 的兼容重载。`reset()` 清输出但不重置 `last_update_`，若行为需要完全重新计时必须显式设计。
+
+`runtime_control_chain<T>` 以 `control_stage<T>` 虚接口串联同类型控制阶段，阶段可由配置或注册表动态组装；PID、Ramp、限幅器和执行器适配器可以分别实现为阶段。数据源不由 PID 持有，控制任务每周期提供 reference、feedback 和 dt。
 
 ## Singleton、concept 与作用域工具
 

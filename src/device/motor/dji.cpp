@@ -200,7 +200,8 @@ void dji_motor::connect() {
         angle_speed_ = _rpm_to_rad_s * static_cast<float>(utils::make_i16(pkg.speed_h, pkg.speed_l)) * reduction_ratio_;
         torque_ = utils::make_i16(pkg.current_h, pkg.current_l);
 
-        pid_.update(linear_speed());
+        const fp32 dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(info_.control_time).count();
+        pid_.update(linear_speed(), dt);
         current_ = pid_.state();
 
         log_debug("angle:{}, speed:{}, torque:{} ,linear speed:{},target speed:{}",this->angle_,this->angle_speed_,this->torque_,linear_speed(),pid_.target());

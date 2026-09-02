@@ -40,7 +40,8 @@ public:
         constexpr fp32 rc_scale = 660.0f;
 
         control_command command;
-        if (input.s1 == s_down && input.s2 == s_down && input.ch4 == roll_up) {
+        const auto pitch_wheel = input.gimbal_pitch_wheel();
+        if (input.s1 == s_down && input.s2 == s_down && pitch_wheel == roll_up) {
             armed_ = true;
             command.arm_requested = true;
         }
@@ -73,7 +74,7 @@ public:
             command.rotate_speed = rotate_enabled_ ? 1.0f : 0.0f;
             command.friction_enabled = friction_enabled_;
             command.auto_aim = input.mouse_r || (input.s1 == s_down && input.s2 == s_up);
-            command.firing = input.mouse_l || input.ch4 == roll_down;
+            command.firing = input.mouse_l || pitch_wheel == roll_down;
             if (!command.auto_aim) {
                 command.yaw_delta = static_cast<fp32>(input.mouse_x) / 10000.0f;
                 command.pitch_delta = static_cast<fp32>(input.mouse_y) / 10000.0f;
@@ -91,7 +92,7 @@ public:
         command.use_pitch_target = true;
         command.rotate_speed = input.s1 == s_up ? 1.0f : 0.0f;
         command.friction_enabled = input.s2 == s_up;
-        command.firing = input.ch4 == roll_down;
+        command.firing = pitch_wheel == roll_down;
         friction_enabled_ = command.friction_enabled;
         return command;
     }

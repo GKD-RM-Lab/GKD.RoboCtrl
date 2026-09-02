@@ -5,12 +5,14 @@
  */
 #pragma once
 
-#include <array>
-#include <span>
+#include <cstddef>
 
 #include "device/base.hpp"
 
 namespace roboctrl::device{ 
+
+struct euler_angle { fp32 roll{}, pitch{}, yaw{}; };
+struct three_axis { fp32 x{}, y{}, z{}; };
     
 /**
  * @brief IMU 三轴枚举，兼容姿态/加速度轴序。
@@ -29,23 +31,25 @@ enum class axis : std::size_t {
  */
 struct imu_base : public device_base {
 protected:
-    std::array<fp32, 3> acc_ {};
-    std::array<fp32, 3> gyro_ {};
-    std::array<fp32, 3> angle_ {};
+    three_axis acc_ {};
+    three_axis gyro_ {};
+    euler_angle angle_ {};
 
 public:
     /** @brief 获取三轴加速度。(rad/s^2) */
-    auto acc() const { return std::span{ acc_ }; }
+    three_axis acceleration() const { return acc_; }
+    three_axis acc() const { return acc_; }
     /** @brief 获取三轴角速度。(rad/s)*/
-    auto gyro() const { return std::span{ gyro_ }; }
+    three_axis gyro() const { return gyro_; }
     /** @brief 获取欧拉角。(rad) */
-    auto angle() const { return std::span{ angle_ }; }
+    euler_angle angle() const { return angle_; }
     /** @brief 指定轴的加速度。 */
-    fp32 acc(const axis axis) const { return acc_[std::to_underlying(axis)]; }
+    fp32 acceleration(const axis a) const { return a == device::axis::x || a == device::axis::roll ? acc_.x : (a == device::axis::y || a == device::axis::pitch ? acc_.y : acc_.z); }
+    fp32 acc(const axis a) const { return acceleration(a); }
     /** @brief 指定轴的角速度。 */
-    fp32 gyro(const axis axis) const { return gyro_[std::to_underlying(axis)]; }
+    fp32 gyro(const axis a) const { return a == device::axis::x || a == device::axis::roll ? gyro_.x : (a == device::axis::y || a == device::axis::pitch ? gyro_.y : gyro_.z); }
     /** @brief 指定轴的欧拉角。 */
-    fp32 angle(const axis axis) const { return angle_[std::to_underlying(axis)]; }
+    fp32 angle(const axis a) const { return a == device::axis::x || a == device::axis::roll ? angle_.roll : (a == device::axis::y || a == device::axis::pitch ? angle_.pitch : angle_.yaw); }
 
     inline explicit imu_base(const std::chrono::nanoseconds offline_timeout) : device_base{offline_timeout} {}
 };

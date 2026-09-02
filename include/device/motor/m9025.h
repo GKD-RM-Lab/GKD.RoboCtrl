@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include "core/async.hpp"
 #include "device/motor/base.hpp"
 #include "utils/pid.h"
@@ -17,6 +18,7 @@ public:
 
         utils::linear_pid::params_type pid_params;
         fp32 radius;
+        std::chrono::steady_clock::duration control_time {std::chrono::milliseconds{1}};
 
         std::string key() const { return name; }
     };
@@ -26,8 +28,10 @@ public:
     }
 
     M9025(const info_type& info);
-    awaitable<void> set(float speed);
-    awaitable<void> enable();
+    awaitable<void> set(float speed) override;
+    awaitable<void> enable() override;
+    void disable() override {}
+    void set_enabled(bool enabled) override { if (!enabled) disable(); }
     awaitable<void> task() { co_return; }
 
 private:

@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <format>
 #include <span>
-#include <string_view>
+#include <string>
 #include <utility>
 
 #include "core/async.hpp"
@@ -31,14 +31,14 @@ public:
      * @brief 串口初始化参数。
      */
     struct info_type{
-        using key_type = std::string_view;
+        using key_type = std::string;
         using owner_type = serial;
 
-        std::string_view name;
-        std::string_view device;
+        std::string name;
+        std::string device;
         unsigned int baud_rate;
 
-        std::string_view key()const{
+        const std::string& key()const{
             return name;
         }
     };

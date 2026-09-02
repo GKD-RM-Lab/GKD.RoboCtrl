@@ -46,6 +46,7 @@ protected:
 
 public:
     device_base(const std::chrono::nanoseconds offline_timeout);
+    virtual ~device_base() = default;
 
     /**
      * @brief 判断设备是否离线

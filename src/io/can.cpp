@@ -41,14 +41,14 @@ can::can(const can::info_type& info)
     :info_{info},
     keyed_io_base{},
     stream_{roboctrl::io_context()},
-    can_name_{info.can_name.data(),info.can_name.length()}
+    interface_name_{info.interface_name.data(),info.interface_name.length()}
 {
     int fd = ::socket(PF_CAN,SOCK_RAW,CAN_RAW);
     if(fd < 0)
         throw std::runtime_error("socket() failed");
 
     struct ifreq ifr{};
-    std::strncpy(ifr.ifr_name, can_name_.c_str(), IFNAMSIZ);
+    std::strncpy(ifr.ifr_name, interface_name_.c_str(), IFNAMSIZ);
     if (ioctl(fd, SIOCGIFINDEX, &ifr) < 0) {
         ::close(fd);
         throw std::runtime_error("ioctl(SIOCGIFINDEX) failed");
@@ -64,7 +64,7 @@ can::can(const can::info_type& info)
 
     stream_.assign(fd);
 
-    log_info("Can io created on {}",info.can_name);
+    log_info("Can io {} created on {}", info.name, info.interface_name);
 }
 
 void can::start() {

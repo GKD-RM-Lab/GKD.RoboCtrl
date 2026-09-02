@@ -8,14 +8,14 @@ GKD.Roboctrl 将机器人电控拆成可复用的通信、设备和控制层。�
 
 ```text
 src/main.cpp
-    │ 选择 BUILD_TYPE、解析 CLI、按顺序初始化
+    │ 选择 BUILD_TYPE、解析 CLI、读取 YAML/JSON、按顺序初始化
     ▼
-include/config/*
-    │ 只声明具体对象的 info_type 与参数
+configs/*.yaml + include/config/runtime.hpp
+    │ 直接组合既有组件的 info_type，解析和校验连接关系
     ▼
-ctrl  ──────────────── 机器人行为与状态编排
+ctrl  ──────────────── 后台控制任务、机器人行为与状态编排
     ▼
-device ─────────────── 协议解释、物理量、离线状态、命令封装
+device ─────────────── 协议解释、物理量、离线状态、底层控制输出
     ▼
 io ────────────────── 字节收发、按 key/原始数据分发
     ▼
@@ -28,15 +28,15 @@ Linux SocketCAN / serial / TCP / UDP
 
 ## 启动生命周期
 
-1. xmake 通过 `type` 选项生成 `BUILD_TYPE`，`include/config/base.hpp` 将其映射为 `TYPE_*` 和 `TYPE_STR`。
-2. `src/main.cpp` 解析 `--help`、`--log`、`--filter` 并设置全局日志器。
-3. `validate_configuration()` 在访问硬件前检查 key、依赖、DJI ID/指令槽和控制模块必需电机。
+1. xmake 通过 `type` 选项生成 `BUILD_TYPE`，`include/config/base.hpp` 将其映射为 `TYPE_*` 和 `TYPE_STR`，并决定默认路径 `configs/<type>.yaml`。
+2. `src/main.cpp` 解析 `--help`、`--log`、`--filter`、`--config`，打印所选配置目录中的全部 YAML/JSON 文本，然后读取指定配置文件。
+3. `load_configuration()` 用 reflect-cpp 将文件直接反序列化为既有组件的 `info_type`；`validate_configuration()` 在访问硬件前检查 key、依赖、DJI ID/指令槽和控制模块必需电机。
 4. `roboctrl::init` 先构造 CAN、串口、DJI 电机、遥控器和 IMU；DJI 电机此时不注册回调或启动任务。
-5. `connect_all<dji_motor>()` 连接 CAN 回调和电机组，再初始化 `robot`；Robot 按车型开关初始化子系统、订阅 ControlPad 输入并默认保持 `NoForce`。
+5. `connect_all<dji_motor>()` 连接 CAN 回调和电机组，再初始化 `robot`；Robot 通过底盘/云台注册表选择设备，启动 `motion_control` 后台任务并默认保持 `NoForce`。
 6. 依次 `start_all<can>()`、`start_all<serial>()`、`start_all<dji_motor_group>()` 和 `start_all<dji_motor>()`；各 `start()` 是幂等的。
 7. `async::run()` 启动唯一的 `asio::io_context`，所有 IO 接收、周期控制和回调协程在同一线程协作运行。
 
-运行后，双开关加滚轮解锁手势是从 `NoForce` 进入 `FollowGimbal` 的入口；100 ms 内无有效 ControlPad 报文时 Robot 会重新进入 `NoForce`。
+运行后，双开关加俯仰拨轮解锁手势是从 `NoForce` 进入 `FollowGimbal` 的入口；100 ms 内无有效 ControlPad 报文时 Robot 会重新进入 `NoForce`。后台控制任务负责把输入分发给抽象底盘、云台和发射设备。
 
 初始化顺序是隐式依赖注入的一部分。遥控器和串口 IMU 在构造时通过串口名称注册回调；DJI 电机刻意把构造与 `connect()` 分开，保证同批对象全部注册后才建立跨对象关系。顺序错误会由配置预检或 `get()` 明确报错。
 
@@ -56,7 +56,7 @@ validate → construct → connect/register callbacks → init controllers/NoFor
 
 批量多例初始化会先检查当前表和本批次内的重复 key，再构造整批对象；`for_each_instance`、`connect_all`、`start_all` 提供阶段化批处理。`instance_ref<T>` 保存 key 并延迟查找具体多例。
 
-对象间可以保存配置/key，也可以在初始化后保存非拥有型 `device::motor_ref`。后者在绑定时擦除具体电机类型，控制循环通过统一的 `set/enable/状态读取` 接口访问稳定的 multiton 对象。这些引用都不拥有实例，因此依赖“进程内实例不删除”的当前生命周期。
+对象间可以保存配置/key，也可以在初始化后保存指向 `device::motor_base` 的非拥有型指针。初始化阶段通过具体电机类型查找一次，控制循环通过基类虚函数访问稳定的 multiton 对象。这些指针不拥有实例，因此依赖“进程内实例不删除”的当前生命周期。
 
 ## 数据流
 
@@ -86,9 +86,9 @@ SocketCAN 帧
 
 ## 配置驱动理念
 
-不同机器人共用驱动和控制实现，差异集中在 `include/config/config.<type>.hpp`：总线名、设备路径、电机 ID、轮半径、PID 和控制参数均应在这里声明。控制代码引用语义化名称（如 `left_front_motor`），不要在控制循环中硬编码物理 CAN 接口或电机 ID。
+不同机器人共用驱动和控制实现，差异集中在 `configs/<type>.yaml`：总线名、设备路径、电机 ID、轮半径、PID 和控制参数都以组件原有 `info_type` 的字段名直接表达。加载后保存的是拥有字符串的 `info_type`，因此配置文件的文本寿命不会影响 multiton key。`include/config/runtime.hpp` 负责反序列化，`validate.hpp` 负责启动前语义校验；不再维护车型硬编码配置副本。
 
-配置不是“能编译即可”。`validate_configuration` 把跨表引用和槽位冲突提前到硬件打开之前；新增配置字段时，应同时增加可在无硬件环境执行的校验和正例/负例测试。
+配置不是“能解析即可”。`validate_configuration` 把跨表引用和槽位冲突提前到硬件打开之前；新增 `info_type` 字段时，应同时确定 YAML 表达、默认值/缺失策略、可在无硬件环境执行的校验和正例/负例测试。`robot.chassis_type` 和 `robot.gimbal_type` 只作为工厂选择键，由 `chassis_registry`/`gimbal_registry` 在初始化时查找并派发具体设备，配置层不复制注册表白名单。
 
 ## 安全边界
 

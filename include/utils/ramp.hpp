@@ -73,20 +73,23 @@ public:
      *
      * @param[in] target 输入目标值
      */
+    inline void update(T target, T dt) noexcept {
+        if (dt <= T{0}) return;
+        const T diff = target - out_;
+        const T max_step = std::max(T{0}, acc_) * dt;
+        if (std::fabs(diff) <= max_step)
+            out_ = target;
+        else
+            out_ += std::copysign(max_step, diff);
+    }
+
+    /** Compatibility overload using the elapsed steady-clock time. */
     inline void update(T target) noexcept {
         using namespace std::chrono;
         const auto now = steady_clock::now();
         const std::chrono::duration<T> dur = now - last_update_; ///< 两次更新间隔时间（秒）
         last_update_ = now;
-
-        const T dt = dur.count();
-        const T diff = target - out_;
-        const T max_step = acc_ * dt;
-
-        if (std::fabs(diff) <= max_step)
-            out_ = target;
-        else
-            out_ += std::copysign(max_step, diff);
+        update(target, dur.count());
     }
 
     /**

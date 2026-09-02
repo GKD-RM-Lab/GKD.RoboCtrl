@@ -1,8 +1,10 @@
 #pragma once
 
+#include <concepts>
 #include <format>
 #include <initializer_list>
 #include <stdexcept>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -17,7 +19,7 @@
 namespace roboctrl::config {
 
 template<typename Info>
-void validate_unique_keys(std::string_view kind, std::initializer_list<Info> infos) {
+void validate_unique_keys(std::string_view kind, std::span<const Info> infos) {
     std::unordered_set<typename Info::key_type> keys;
     for (const auto& info : infos) {
         const auto key = info.key();
@@ -32,10 +34,15 @@ void validate_unique_keys(std::string_view kind, std::initializer_list<Info> inf
     }
 }
 
+template<typename Info>
+void validate_unique_keys(std::string_view kind, std::initializer_list<Info> infos) {
+    validate_unique_keys(kind, std::span{infos.begin(), infos.size()});
+}
+
 inline void validate_configuration(
-    std::initializer_list<io::can::info_type> cans,
-    std::initializer_list<io::serial::info_type> serials,
-    std::initializer_list<device::dji_motor::info_type> motors,
+    std::span<const io::can::info_type> cans,
+    std::span<const io::serial::info_type> serials,
+    std::span<const device::dji_motor::info_type> motors,
     const device::control_pad::info_type& control_pad,
     const device::serial_imu::info_type& imu,
     const ctrl::robot::info_type& robot)
@@ -127,10 +134,8 @@ inline void validate_configuration(
         require_motor(robot.chassis_info.right_front_motor, "chassis");
         require_motor(robot.chassis_info.left_rear_motor, "chassis");
         require_motor(robot.chassis_info.right_rear_motor, "chassis");
-        if (robot.chassis_info.control_time <= std::chrono::steady_clock::duration::zero() ||
-            robot.chassis_info.follow_direction == 0.0f ||
-            robot.chassis_info.follow_settle_angle < 0.0f) {
-            throw std::invalid_argument("chassis has invalid follow-control parameters");
+        if (robot.chassis_info.control_time <= std::chrono::steady_clock::duration::zero()) {
+            throw std::invalid_argument("chassis has non-positive control period");
         }
     }
     if (robot.enable_gimbal) {
@@ -160,6 +165,23 @@ inline void validate_configuration(
             throw std::invalid_argument("shoot has invalid control parameters");
         }
     }
+}
+
+inline void validate_configuration(
+    std::initializer_list<io::can::info_type> cans,
+    std::initializer_list<io::serial::info_type> serials,
+    std::initializer_list<device::dji_motor::info_type> motors,
+    const device::control_pad::info_type& control_pad,
+    const device::serial_imu::info_type& imu,
+    const ctrl::robot::info_type& robot)
+{
+    validate_configuration(
+        std::span{cans.begin(), cans.size()},
+        std::span{serials.begin(), serials.size()},
+        std::span{motors.begin(), motors.size()},
+        control_pad,
+        imu,
+        robot);
 }
 
 } // namespace roboctrl::config

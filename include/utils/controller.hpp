@@ -7,8 +7,47 @@
 
 #include <utility>
 #include <functional>
+#include <memory>
+#include <vector>
+
+#include "utils/utils.hpp"
 
 namespace roboctrl::utils{
+
+/** Runtime-polymorphic control stage for homogeneous scalar chains. */
+template<typename T>
+class control_stage {
+public:
+    virtual ~control_stage() = default;
+    virtual T update(T input, fp32 dt) = 0;
+    virtual void reset() = 0;
+};
+
+/**
+ * A dynamically assembled chain. Stages are owned by the chain and can be
+ * selected by configuration or a registry without templating the caller.
+ */
+template<typename T>
+class runtime_control_chain {
+public:
+    void add(std::unique_ptr<control_stage<T>> stage) {
+        if (stage) stages_.push_back(std::move(stage));
+    }
+
+    T update(T input, fp32 dt) {
+        for (auto& stage : stages_) input = stage->update(input, dt);
+        return input;
+    }
+
+    void reset() {
+        for (auto& stage : stages_) stage->reset();
+    }
+
+    [[nodiscard]] bool empty() const noexcept { return stages_.empty(); }
+
+private:
+    std::vector<std::unique_ptr<control_stage<T>>> stages_;
+};
 
 /**
  * @brief 控制器概念，约束 update/state/构造能力。

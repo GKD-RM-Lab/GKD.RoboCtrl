@@ -1,7 +1,8 @@
 /**
  * @file pid.h
  * @brief 通用 PID 控制器实现。
- * @details 提供可配置的 PID 基类以及基于线性误差与角度误差的具体别名，支持与 `controlled_motor` 组合使用。
+ * @details 提供可配置的 PID 基类以及基于线性误差与角度误差的具体别名。
+ * 控制循环优先使用显式 dt 的 update()，避免 PID 行为依赖调度频率。
  */
 #pragma once
 #include <cmath>
@@ -55,30 +56,43 @@ struct pid_base {
     inline T target() const { return target_; }
 
     /**
-     * @brief 根据当前值更新 PID 输出。
+     * @brief 根据当前值和采样周期更新 PID 输出。
      * @details
      * 与传统 RM 风格 PID（error[0]/error[1] 差分）保持兼容：
      * - 误差缓存顺序：先 old 再 new
-     * - 积分项：I += ki * error
-     * - 微分项：D = kd * (error_curr - error_prev)
+     * - 积分项：I += ki * error * dt
+     * - 微分项：D = kd * (error_curr - error_prev) / dt
      * - 限幅顺序：先 Iout，再输出
      */
-    void update(T current) {
+    void update(T current, T dt) {
         T error_prev = last_error_;
         T error_curr = error_measurer(current, target_);
         last_error_ = error_curr;
 
         T pout = kp * error_curr;
 
-        integral_ += ki * error_curr;
+        if (dt > T{0}) {
+            integral_ += ki * error_curr * dt;
+        }
         integral_ = std::clamp(integral_, -max_iout, max_iout);
 
-        T derivative = kd * (error_curr - error_prev);
+        const T derivative = dt > T{0}
+            ? kd * (error_curr - error_prev) / dt
+            : T{0};
 
         T out = pout + integral_ + derivative;
         out = std::clamp(out, -max_out, max_out);
 
         output_ = out;
+    }
+
+    /** Legacy update preserving the historical per-call PID behavior. */
+    void update(T current) { update(current, T{1}); }
+
+    /** Update with a one-shot reference value. */
+    void update(T target, T current, T dt) {
+        set_target(target);
+        update(current, dt);
     }
 
     /**

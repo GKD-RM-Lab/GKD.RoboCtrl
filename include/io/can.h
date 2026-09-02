@@ -6,7 +6,7 @@
 #pragma once
 
 #include <cstdint>
-#include <string_view>
+#include <string>
 #include <asio.hpp>
 
 #include "base.hpp"
@@ -26,12 +26,15 @@ public:
      * @brief CAN 初始化参数。
      */
     struct info_type{
-        std::string_view can_name;
+        /// 项目内稳定名称，供电机等其他组件引用。
+        std::string name;
+        /// 实际 SocketCAN 接口名，例如 can0 或 CAN_CHASSIS。
+        std::string interface_name;
 
-        using key_type = std::string_view;
+        using key_type = std::string;
         using owner_type = can;
 
-        std::string_view key() const{return can_name;}
+        const std::string& key() const{return name;}
     };
 
     using key_type = std::uint32_t;
@@ -61,14 +64,14 @@ public:
     awaitable<void> task();
 
     std::string desc()const{
-        return std::format("bare can({})",info_.can_name);
+        return std::format("bare can({} on {})",info_.name, info_.interface_name);
     }
 
 private:
     asio::posix::stream_descriptor stream_;
     info_type info_;
     std::array<std::byte,20> buffer_;
-    std::string can_name_;
+    std::string interface_name_;
     bool started_ {false};
 };
 }

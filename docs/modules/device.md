@@ -16,18 +16,18 @@ Device 层解释 IO 报文、维护物理量与在线状态，并把控制目标
 
 `motor_base` 统一保存角度（rad）、角速度（rad/s）、扭矩/电流反馈和轮半径，并派生 RPM、线速度。具体电机满足 `device::motor` concept：继承 `motor_base`，作为 multiton owner，并实现 `set()`、`enable()` 和 `task()`。控制目标的精确含义由驱动定义，不能只根据 `set(float)` 猜测单位。
 
-## 电机与 `motor_ref`
+## 电机与 `motor_base`
 
-`device::motor_ref` 是非拥有型类型擦除引用。内部保存稳定的 `motor_base*` 以及 `set/enable` 调用入口，不分配或销毁电机。绑定方式：
+控制层使用非拥有型 `motor_base*` 保存电机引用，通过基类虚函数调用 `set/enable/disable`，不分配或销毁电机。具体类型只在初始化绑定时出现一次：
 
 ```cpp
-auto motor = motor_ref::from<dji_motor>("left_front_motor");
-co_await motor.set(1.0f);
+auto* motor = &roboctrl::get<dji_motor>("left_front_motor");
+co_await motor->set(1.0f);
 ```
 
-如果已有具体电机 `info_type`，可用 `motor_ref{info}` 自动推导 owner 类型。绑定必须发生在对应 multiton 实例初始化之后。引用可复制和放入容器，统一读取角度、角速度、RPM、扭矩、线速度与离线状态；空引用被调用时抛出 `logic_error`。
+绑定必须发生在对应 multiton 实例初始化之后。指针可复制和放入容器，统一读取角度、角速度、RPM、扭矩、线速度与离线状态；控制层应保证绑定成功后再启动周期任务。
 
-理念上，`motor_ref` 让 Control 层依赖“电机能力”而不是 DJI 具体模板类型，但它不是拥有型智能指针，也不提供运行时类型查询。更换具体驱动时，配置、初始化顺序和单位契约仍需同步检查。
+理念上，`motor_base*` 让 Control 层依赖“电机能力”而不是 DJI 具体模板类型。更换具体驱动时，配置、初始化顺序和单位契约仍需同步检查。
 
 ## DJI 生命周期与安全门
 
@@ -53,13 +53,23 @@ DJI 反馈仍按固定 8 字节 packed 结构解释，外部协议的端序与�
 
 `serial_imu` 在串口 key 1 注册固定 packed 结构，接收 yaw/pitch/roll 及对应角速度。角度由度转换为 rad 并归一化，角速度还除以 1000，表明上游字段按“度/毫秒”解释；每次有效回调调用 `tick()`，离线阈值 100 ms。加速度数组当前没有数据来源。
 
+所有 IMU 实现都通过无参 `angle()`、`gyro()`、`acceleration()` 暴露快照：姿态返回 `euler_angle{roll, pitch, yaw}`，角速度和加速度返回三轴 `{x, y, z}`。带 `axis` 参数的访问器仅为旧调用点保留。
+
 成熟度：入口 **已接入**，但协议无版本、校验和和显式线序，单位约定只体现在实现中。
 
 ## ControlPad
 
-`control_pad` 在串口 key 2 注册 13 个明确为 32 位的字段（52 字节），解析后通过回调发布 `control_pad_state`；它不直接依赖或操作 Control 层。有效报文刷新心跳，离线阈值为 100 ms。Robot 在上层实现旧工程的键鼠/遥控映射、解锁手势和失联 `NoForce`。
+`control_pad` 在串口 key 2 注册控制输入。正式抽象只包含 DJI 接收机手册中的 `CH0`～`CH3`、独立的云台俯仰拨轮以及 `S1`/`S2`；通过 `control_channel`、`channel()` 和 `gimbal_pitch_wheel()` 访问。`control_pad_state` 目前仍保留鼠标/键盘字段作为旧协议的兼容存储，控制逻辑不得再依赖这些字段来定义新的设备接口。有效报文刷新心跳，离线阈值为 100 ms。
 
 线协议仍沿用主机端序，且没有版本与校验和；上游发送端必须确认使用同样的 32 位字段布局。成熟度：输入发布与失联监测 **已接入**，线协议健壮性仍是**部分实现**。
+
+## Chassis 与 Gimbal 抽象
+
+`device::chassis_base` 只表达平面速度和旋转速度：可以一次设置 `(x, y, z)`，也可以分别更新平面 `x`、`y` 或旋转分量。麦轮逆运动学位于 `utils::kinematics::inverse_mecanum()`，具体底盘负责电机绑定、PID 和速度下发，不读取云台状态。
+
+`device::gimbal_base` 至少拆分 yaw、pitch 的目标/增量命令；具体云台负责姿态反馈、角度 PID 和电机速度输出。底盘跟随云台、坐标系策略和遥控器映射属于 `ctrl` 的后台控制任务。
+
+底盘和云台通过 `chassis_registry`、`gimbal_registry` 注册和选择具体实现。实现文件使用 `ROBOCTRL_REGISTER_CHASSIS` / `ROBOCTRL_REGISTER_GIMBAL` 宏：宏展开为静态布尔变量和 lambda，在程序启动的静态初始化阶段完成工厂注册。注册表只保存工厂和当前非拥有型引用，具体实例的生命周期仍由设备实现（当前标准实现使用单例）。
 
 ## SuperCap
 

@@ -10,6 +10,7 @@ control_pad::control_pad(const control_pad::info_type& info)
 {
     auto& serial = roboctrl::get<io::serial>(info.serial_name);
     serial.on_data(2,[this](const control_pad_state& state){
+        state_ = state;
         tick();
         on_update_(state);
     });
