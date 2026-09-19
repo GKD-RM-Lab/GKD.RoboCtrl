@@ -8,75 +8,84 @@
 
 using namespace roboctrl::ctrl;
 
-bool robot::init(const info_type& info){
+bool robot::init(const info_type& info) {
     control_pad_key_ = info.control_pad_key;
     enable_chassis_ = info.enable_chassis;
     enable_gimbal_ = info.enable_gimbal;
     enable_shoot_ = info.enable_shoot;
-
-    if (info.enable_chassis && !device::chassis_registry::init(info.chassis_type, info.chassis_info)) {
+    if (enable_chassis_ && !device::chassis_registry::init(info.chassis_type, info.chassis_info))
         return false;
-    }
-    if (info.enable_gimbal && !device::gimbal_registry::init(info.gimbal_type, info.gimbal_info)) {
+    if (enable_gimbal_ && !device::gimbal_registry::init(info.gimbal_type, info.gimbal_info))
         return false;
+    chassis_ = enable_chassis_ ? device::chassis_registry::current() : nullptr;
+    gimbal_ = enable_gimbal_ ? device::gimbal_registry::current() : nullptr;
+    if (enable_gimbal_ && info.secondary_gimbal_info) {
+        secondary_gimbal_ = device::gimbal_registry::create(info.gimbal_type, *info.secondary_gimbal_info);
+        if (!secondary_gimbal_) return false;
     }
-    chassis_ = info.enable_chassis ? device::chassis_registry::current() : nullptr;
-    gimbal_ = info.enable_gimbal ? device::gimbal_registry::current() : nullptr;
-    if (info.enable_shoot && !roboctrl::init(info.shoot_info)) {
-        return false;
+    if (enable_gimbal_ && info.large_yaw_info) {
+        large_yaw_ = device::gimbal_registry::create(info.gimbal_type, *info.large_yaw_info);
+        if (!large_yaw_) return false;
     }
-
+    if (enable_shoot_ && !roboctrl::init(info.shoot_info)) return false;
+    if (enable_shoot_ && info.secondary_shoot_info) {
+        secondary_shoot_ = std::make_unique<shoot>();
+        if (!secondary_shoot_->init(*info.secondary_shoot_info)) return false;
+    }
     controlled_motors_.clear();
     const auto bind_motor = [this](const std::string& key) {
         auto* motor = &roboctrl::get<device::dji_motor>(key);
-        if (std::find(controlled_motors_.begin(), controlled_motors_.end(), motor) ==
-            controlled_motors_.end()) {
+        if (std::find(controlled_motors_.begin(), controlled_motors_.end(), motor) == controlled_motors_.end())
             controlled_motors_.push_back(motor);
-        }
     };
-    if (info.enable_chassis) {
+    if (enable_chassis_) {
         bind_motor(info.chassis_info.left_front_motor);
         bind_motor(info.chassis_info.right_front_motor);
         bind_motor(info.chassis_info.left_rear_motor);
         bind_motor(info.chassis_info.right_rear_motor);
     }
-    if (info.enable_gimbal) {
-        bind_motor(info.gimbal_info.yaw_motor_key);
-        bind_motor(info.gimbal_info.pitch_motor_key);
-    }
-    if (info.enable_shoot) {
-        bind_motor(info.shoot_info.left_friction_motor);
-        bind_motor(info.shoot_info.right_friction_motor);
-        bind_motor(info.shoot_info.trigger_motor);
-    }
-
     set_state(robot_state::NoForce);
-
-    if (!roboctrl::init(motion_control::info_type{
-        .control_pad_key = control_pad_key_,
-        .enable_shoot = enable_shoot_})) {
-        return false;
-    }
+    for (auto* gimbal : {gimbal_, secondary_gimbal_, large_yaw_})
+        if (gimbal) gimbal->start();
+    if (enable_shoot_) roboctrl::get<shoot>().start();
+    if (secondary_shoot_) secondary_shoot_->start();
+    auto motion = info.motion_info;
+    motion.control_pad_key = control_pad_key_;
+    motion.enable_shoot = enable_shoot_;
+    if (!roboctrl::init(motion)) return false;
     roboctrl::spawn(task());
-
     log_info("Robot initiated");
-    
     return true;
+}
+
+bool robot::gimbals_initialized() const {
+    return (!gimbal_ || gimbal_->initialized()) &&
+        (!secondary_gimbal_ || secondary_gimbal_->initialized()) &&
+        (!large_yaw_ || large_yaw_->initialized());
+}
+
+bool robot::gimbals_online() const {
+    return (!gimbal_ || gimbal_->online()) &&
+        (!secondary_gimbal_ || secondary_gimbal_->online()) &&
+        (!large_yaw_ || large_yaw_->online());
 }
 
 void robot::set_state(robot_state state) {
     state_ = state;
-    if (state == robot_state::NoForce) {
+    const bool gimbal_enabled = state != robot_state::NoForce;
+    const bool motion_enabled = gimbal_enabled && state != robot_state::FinishInit;
+    if (chassis_) chassis_->set_enabled(motion_enabled);
+    for (auto* gimbal : {gimbal_, secondary_gimbal_, large_yaw_}) {
+        if (!gimbal) continue;
+        gimbal->set_enabled(gimbal_enabled);
+        gimbal->set_recentering(state == robot_state::FinishInit);
     }
-    const bool enabled = state != robot_state::NoForce;
-    if (enable_chassis_ && chassis_) chassis_->set_enabled(enabled);
-    if (enable_gimbal_ && gimbal_) gimbal_->set_enabled(enabled);
-    for (auto* motor : controlled_motors_) {
-        if (motor) motor->set_enabled(enabled);
-    }
+    for (auto* motor : controlled_motors_) motor->set_enabled(motion_enabled);
+    if (enable_shoot_) roboctrl::get<shoot>().set_enabled(motion_enabled);
+    if (secondary_shoot_) secondary_shoot_->set_enabled(motion_enabled);
 }
 
-roboctrl::awaitable<void> robot::task(){
+roboctrl::awaitable<void> robot::task() {
     auto& control_pad = roboctrl::get<device::control_pad>(control_pad_key_);
     while (true) {
         if (state_ != robot_state::NoForce && control_pad.offline()) {

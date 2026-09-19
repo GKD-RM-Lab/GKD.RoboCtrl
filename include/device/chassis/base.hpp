@@ -6,6 +6,7 @@
 #pragma once
 
 #include <any>
+#include <array>
 #include <chrono>
 #include <concepts>
 #include <functional>
@@ -15,6 +16,7 @@
 #include "utils/utils.hpp"
 
 namespace roboctrl::device {
+struct motor_base;
 using namespace std::chrono_literals;
 
 /** @brief 底盘的统一控制接口。 */
@@ -29,6 +31,8 @@ public:
         std::string right_rear_motor {"right_rear_motor"};
         std::chrono::steady_clock::duration control_time {1ms};
         fp32 max_rotate_speed {1.0f};
+        // LF, RF, LR, RR; deployment profiles explicitly carry mounting signs.
+        std::array<int, 4> wheel_directions {1, -1, 1, -1};
     };
 
     virtual ~chassis_base() = default;
@@ -53,6 +57,8 @@ public:
     virtual fp32 rotate_speed() const = 0;
     /** @brief 启用或禁用底盘输出。 */
     virtual void set_enabled(bool) = 0;
+    /** Bound actuators in LF, RF, LR, RR order, for control-layer power policy. */
+    virtual std::array<motor_base*, 4> wheel_motors() const { return {}; }
 };
 
 /** @brief 判断类型是否实现底盘抽象。 */

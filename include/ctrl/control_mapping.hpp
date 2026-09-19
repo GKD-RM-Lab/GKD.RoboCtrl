@@ -94,6 +94,7 @@ public:
         command.use_pitch_target = true;
         command.rotate_speed = input.s1 == s_up ? 1.0f : 0.0f;
         command.friction_enabled = input.s2 == s_up;
+        command.auto_aim = input.s1 == s_down && input.s2 == s_up;
         command.firing = pitch_wheel == roll_down;
         friction_enabled_ = command.friction_enabled;
         return command;

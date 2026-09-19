@@ -39,7 +39,8 @@ public:
 
         std::string name;
         std::string device;
-        unsigned int baud_rate;
+        unsigned int baud_rate {};
+        bool raw {false}; // Dedicated byte stream; excludes 55 AA key framing.
 
         const std::string& key()const{
             return name;
@@ -61,6 +62,13 @@ public:
      */
     awaitable<void> send(key_type key,byte_span data);
 
+    /** Dedicated raw stream for protocols that supply their own framing/CRC. */
+    void on_raw_data(callback_fn<byte_span> auto fn) {
+        if (!info_.raw) throw std::logic_error("raw callback requires serial.raw=true");
+        raw_callbacks_.add([fn](data_ptr data) mutable { return fn(byte_span{*data}); });
+    }
+    awaitable<void> send_raw(byte_span data);
+
     /**
      * @brief 接收循环任务。
      */
@@ -80,6 +88,7 @@ private:
     std::array<std::byte,256> read_buffer_;
     std::vector<std::byte> receive_buffer_;
     bool started_ {false};
+    callback<data_ptr> raw_callbacks_;
 
     // 兼容当前 Linux/RM 端的小端线序：数值 0xAA55 在线上为 55 AA。
     static constexpr std::array<std::byte, 2> header_bytes{

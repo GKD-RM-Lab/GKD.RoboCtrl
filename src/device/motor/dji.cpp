@@ -15,7 +15,9 @@ using namespace std::chrono_literals;
 using namespace roboctrl::device;
 using namespace roboctrl;
 
-struct _dji_upload_pkg {
+namespace {
+
+struct dji_upload_pkg {
     uint8_t angle_h;
     uint8_t angle_l;
     uint8_t speed_h;
@@ -25,6 +27,25 @@ struct _dji_upload_pkg {
     uint8_t temperature;
     uint8_t unused;
 } __attribute__((packed));
+
+static_assert(sizeof(dji_upload_pkg) == 8);
+
+struct dji_motor_measure {
+    uint16_t ecd;
+    int16_t speed_rpm;
+    int16_t given_current;
+    uint8_t temperature;
+};
+
+dji_motor_measure parse_dji_upload_pkg(io::byte_span data) {
+    const auto pkg = utils::from_bytes<dji_upload_pkg>(data);
+    return {
+        .ecd = utils::make_u16(pkg.angle_h, pkg.angle_l),
+        .speed_rpm = utils::make_i16(pkg.speed_h, pkg.speed_l),
+        .given_current = utils::make_i16(pkg.current_h, pkg.current_l),
+        .temperature = pkg.temperature,
+    };
+}
 
 constexpr fp32 _rpm_to_rad_s = 2.f * Pi_f / 60.f;
 constexpr fp32 _ecd_8192_to_rad  = 2.f * Pi_f / 8192.f;
@@ -41,6 +62,8 @@ static std::string __motor_tyep_to_string(dji_motor::type type){
             return "Unknown";
     }
 }
+
+} // namespace
 
 dji_motor_group::dji_motor_group(dji_motor_group::info_type info):
     info_{info}
@@ -200,18 +223,16 @@ void dji_motor::connect() {
             break;
     }
 
-    can.on_data(fallback_canid,[this](const _dji_upload_pkg& pkg) -> void{
-        angle_ = _ecd_8192_to_rad * static_cast<float>(utils::make_u16(pkg.angle_h, pkg.angle_l)) ;
-        angle_speed_ = _rpm_to_rad_s * static_cast<float>(utils::make_i16(pkg.speed_h, pkg.speed_l)) * reduction_ratio_;
-        torque_ = utils::make_i16(pkg.current_h, pkg.current_l);
-
-        const fp32 dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(info_.control_time).count();
-        pid_.update(linear_speed(), dt);
-        current_ = pid_.state();
+    can.on_data(fallback_canid, [this](io::byte_span data) {
+        const auto measure = parse_dji_upload_pkg(data);
+        if (measure.ecd >= 8192) return;
+        angle_ = _ecd_8192_to_rad * static_cast<float>(measure.ecd);
+        angle_speed_ = _rpm_to_rad_s * static_cast<float>(measure.speed_rpm) * reduction_ratio_;
+        torque_ = measure.given_current;
 
         log_debug("angle:{}, speed:{}, torque:{} ,linear speed:{},target speed:{}",this->angle_,this->angle_speed_,this->torque_,linear_speed(),pid_.target());
         tick();
-    });
+    }, sizeof(dji_upload_pkg));
 
     group.register_motor(this);
     connected_ = true;
@@ -243,16 +264,40 @@ void dji_motor::set_enabled(bool enabled) {
 }
 
 roboctrl::awaitable<void> dji_motor::set(fp32 speed){ 
-    pid_.set_target(speed);
+    if (mode_ != control_mode::linear) pid_.clean();
+    mode_ = control_mode::linear;
+    pid_.set_target(enabled_ && std::isfinite(speed) ? speed : 0.f);
 
     log_debug("target set to :{}",speed);
 
     co_return;
 }
 
+roboctrl::awaitable<void> dji_motor::set_angle_speed(fp32 speed) {
+    if (mode_ != control_mode::angular) pid_.clean();
+    mode_ = control_mode::angular;
+    pid_.set_target(enabled_ && std::isfinite(speed) ? speed : 0.f);
+    co_return;
+}
+
+roboctrl::awaitable<void> dji_motor::set_current(fp32 command) {
+    if (mode_ != control_mode::current) pid_.clean();
+    mode_ = control_mode::current;
+    current_ = enabled_ && !offline() && std::isfinite(command)
+        ? std::clamp(command, -max_current(), max_current()) : 0.f;
+    co_return;
+}
+
 roboctrl::awaitable<void> dji_motor::task(){
     while(true){
-        log_debug("pid output :{}",pid_.state());
+        if (!enabled_ || offline()) {
+            current_ = 0.f;
+            pid_.clean();
+        } else if (mode_ != control_mode::current) {
+            const fp32 dt = std::chrono::duration<fp32>(info_.control_time).count();
+            pid_.update(mode_ == control_mode::linear ? linear_speed() : angle_speed(), dt);
+            current_ = std::clamp(pid_.state(), -max_current(), max_current());
+        }
 
         co_await wait_for(info_.control_time);
     }

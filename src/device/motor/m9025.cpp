@@ -1,53 +1,73 @@
 #include "device/motor/m9025.h"
-#include "core/async.hpp"
-#include "device/motor/base.hpp"
-#include "io/base.hpp"
 #include "io/can.h"
-#include "utils/utils.hpp"
-#include <cstddef>
-#include <cstdint>
 
 using namespace roboctrl;
 using namespace roboctrl::device;
 
-constexpr fp32 _rpm_to_rad_s = 2.f * Pi_f / 60.f;
-constexpr fp32 _ecd_8192_to_rad  = 2.f * Pi_f / 8192.f;
-
-M9025::M9025(const info_type& info):
-    motor_base{info.control_time, info.radius},
-    info_{info},
-    pid_{info.pid_params}
-{
-    roboctrl::get<io::can>(info.can_name).on_data(0x140 + info.id,[&](const details::motor_upload_pkg& pkg) -> awaitable<void>{
-        this->angle_ = _ecd_8192_to_rad * static_cast<float>(utils::make_u16(pkg.angle_h, pkg.angle_l));
-        this->angle_speed_ = _rpm_to_rad_s * static_cast<float>(utils::make_i16(pkg.speed_h, pkg.speed_l));
-        this->torque_ = utils::make_i16(pkg.current_h, pkg.current_l);
-
-        const fp32 dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(info_.control_time).count();
-        this->pid_.update(this->angle_speed_, dt);
-
-        std::array<std::byte,8> data{};
-
-        //TODO
-
-        co_await roboctrl::get<io::can>(info_.can_name).send(0x200 + info_.id,data);
-
-        this->log_debug("angle:{}, speed:{}, torque:{}",this->angle_,this->angle_speed_,this->torque_);
-        this->tick();
-    });
-    
+m9025::m9025(const info_type& info)
+    : motor_base{info.offline_timeout, info.radius}, info_{info}, pid_{info.pid_params} {
+    if (!valid_configuration(info)) throw std::invalid_argument("invalid M9025 configuration or feedback scale");
 }
 
-roboctrl::awaitable<void> M9025::set(fp32 speed)
-{
-    pid_.set_target(speed);
-    const fp32 dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(info_.control_time).count();
-    pid_.update(this->angle_speed_, dt);
+void m9025::connect() {
+    if (connected_) return;
+    get<io::can>(info_.can_name).on_data(0x140 + info_.id, [this](io::byte_span data) {
+        const auto feedback = motor_protocol::decode_m9025(data);
+        if (!feedback) return;
+        angle_ = info_.direction * 2.f * Pi_f * feedback->encoder / info_.encoder_counts_per_turn;
+        angle_speed_ = info_.direction * feedback->speed_raw * info_.speed_rad_per_count;
+        torque_ = info_.direction * feedback->current_raw;
+        tick();
+    }, 8);
+    connected_ = true;
+}
 
+void m9025::start() {
+    if (!connected_) throw std::logic_error("M9025 must connect before start");
+    if (started_) return;
+    started_ = true;
+    roboctrl::spawn(task());
+}
+
+awaitable<void> m9025::set(fp32 speed) { co_await set_angle_speed(speed / radius_); }
+
+awaitable<void> m9025::set_angle_speed(fp32 speed) {
+    if (direct_current_) pid_.clean();
+    direct_current_ = false;
+    pid_.set_target(enabled_ && std::isfinite(speed) ? speed : 0.f);
     co_return;
 }
 
-roboctrl::awaitable<void> M9025::enable()
-{
+awaitable<void> m9025::set_current(fp32 command) {
+    if (!direct_current_) pid_.clean();
+    direct_current_ = true;
+    current_ = enabled_ && !offline() && std::isfinite(command)
+        ? std::clamp(command, -max_current(), max_current()) : 0.f;
     co_return;
+}
+
+void m9025::disable() {
+    enabled_ = false;
+    current_ = 0.f;
+    pid_.clean();
+}
+
+void m9025::set_enabled(bool enabled) {
+    if (enabled) enabled_ = true;
+    else disable();
+}
+
+awaitable<void> m9025::task() {
+    while (true) {
+        if (!enabled_ || offline()) {
+            current_ = 0.f;
+            pid_.clean();
+        } else if (!direct_current_) {
+            pid_.update(angle_speed(), std::chrono::duration<fp32>(info_.control_time).count());
+            current_ = pid_.state();
+        }
+        const auto data = motor_protocol::encode_m9025_current(static_cast<int16_t>(info_.direction * current()));
+        co_await get<io::can>(info_.can_name).send(0x140 + info_.id, data);
+        co_await wait_for(info_.control_time);
+    }
 }

@@ -1,225 +1,120 @@
-/**
- * @file PowerController.hpp
- * @version 2.0
- * @note The estimated power formula: P = τΩ + k1|Ω| + k2τ^2
- */
 #pragma once
 
-// The historical power manager still depends on the pre-migration type tree.
-// Keep it opt-in until it is ported to the current device/control interfaces;
-// the default build must not expose an uncompilable legacy header.
-#if defined(ROBOCTRL_ENABLE_LEGACY_POWER_MANAGER)
-
-#include <cstdint>
-#include <deque>
 #include <array>
+#include <cstdint>
 
-#define USE_POWER_CONTROLLER TRUE
+#include "core/async.hpp"
+#include "utils/singleton.hpp"
 
-// If the capacitor is plugged into the circuit, make sure you enable the super
-// cap module successfully Otherwise, it will cause unexpected behavior of the
-// RLS model
-#define USE_SUPER_CAPACITOR TRUE
+namespace roboctrl::device { class chassis_base; }
 
-#define USE_REFEREE_SYSTEM_COMM TRUE
+namespace roboctrl::ctrl {
 
-#include "utils/RLS.hpp"
-#include "core/logger.h"
+/** Snapshot in output-shaft rad/s and the motor's raw current command units. */
+struct power_wheel {
+    float requested_current {};
+    float measured_current {};
+    float angular_speed {};
+    float target_angular_speed {};
+    float max_current {};
+    bool online {false};
+};
 
-namespace roboctrl::ctrl
-{
-namespace power_manage{
-    constexpr static float refereeFullBuffSet = 60.0f; // 裁判系统满功率能量缓冲目标值
-    constexpr static float refereeBaseBuffSet = 50.0f; // 裁判系统基础功率能量缓冲目标值
-    constexpr static float capFullBuffSet = 250.0f; // 超级电容满功率能量缓冲目标值
-    constexpr static float capBaseBuffSet = 100.0f; // 超级电容基础功率能量缓冲目标值
-    constexpr static float error_powerDistribution_set = 20.0f; //功率分配算法的误差阈值
-    constexpr static float prop_powerDistribution_set = 15.0f; // 功率分配算法的比例阈值
+/** Validity is supplied by the device freshness checks, never by payload presence. */
+struct power_feedback {
+    bool referee_online {false};
+    float referee_power_limit {};
+    bool buffer_online {false};
+    float buffer_energy {};
+    bool cap_online {false};
+    float cap_power_limit {};
+    float cap_energy {}; // Legacy capacitor protocol index, 0..255; not joules.
+    float measured_power {}; // Capacitor input, W; no guessed referee field.
+    std::uint64_t measurement_sequence {};
+};
 
-    // constexpr float MIN_MAXPOWER_CONFIGURED                   = 15.0f;
-    constexpr float MAX_CAP_POWER_OUT = 300.0f; // 超级电容最大输出功率
-    constexpr float CAP_OFFLINE_ENERGY_RUNOUT_POWER_THRESHOLD = 43.0f; // 电容离线时能量耗尽的功率阈值
-    constexpr float CAP_OFFLINE_ENERGY_TARGET_POWER = 37.0f; // 电容离线时的目标功率
-    constexpr float MAX_POEWR_REFEREE_BUFF = 60.0f; // 裁判系统最大功率缓冲
-    constexpr float REFEREE_GG_COE = 0.95f; // 裁判系统挂了的功率系数
-    constexpr float CAP_REFEREE_BOTH_GG_COE = 0.85f; // 电容和裁判系统都挂了时的功率系数
+struct power_allocation {
+    std::array<float, 4> current_limits {};
+    float power_limit {};
+    float requested_power {};
+    float allocated_power {};
+    float measured_power {};
+    float speed_loss {};
+    float torque_loss {};
+    bool limited {false};
+    bool motor_fault {false};
+    bool telemetry_offline {true};
+    bool budget_unachievable {false};
+    std::uint64_t rls_updates {};
+};
 
-    /**
-     * @brief The Power Limit and max HP enumeration attributed by division, chassis
-     * type and level
-     * @note  Copy from RM2024 Official Rule Manual
-     * @attention The infantry data list only suits for standard infantry, but not
-     * balanced infantry
-     * @attention if the pilot changes the chassis type before the game officially
-     * start, and simultaneously the referee system is disconnected before chassis
-     * type changed, there will be problem of distinguishing the chassis type, so we
-     * choose HP_FIRST chassis type conservatively, except for sentry
-     */
-    constexpr static uint8_t maxLevel = 11U; //最高等级
-    constexpr static uint8_t HeroChassisPowerLimit_HP_FIRST[maxLevel] = { 0,   55U,  60U, 65U,
-                                                                          70U, 75U,  80U, 85U,
-                                                                          90U, 100U, 120U }; // 英雄各等级功率限制
-    constexpr static uint8_t InfantryChassisPowerLimit_HP_FIRST[maxLevel] = { 0,   45U, 50U, 55U,
-                                                                              60U, 65U, 70U, 75U,
-                                                                              80U, 90U, 100U };// 步兵各等级功率限制
-    constexpr static uint8_t SentryChassisPowerLimit = 100U;
-
-    enum class Division
-    {
-        INFANTRY, // 0
-        HERO,     // 1
-        SENTRY    // 2
+/** Control policy only: bounded work on each motion-control tick, no extra thread. */
+class power_manager : public utils::singleton_base<power_manager> {
+public:
+    struct info_type {
+        using owner_type = power_manager;
+        bool enabled {true};
+        float configured_power_limit {35.0f};
+        float offline_power_limit {35.0f};
+        float max_cap_boost {0.0f};
+        // Algebraic conversion of the legacy M3508 rotor model to output shaft.
+        float torque_per_current {0.3f * 20.0f / 16384.0f};
+        float speed_loss {0.22f * (3591.0f / 187.0f)};
+        float torque_loss {1.2f * (187.0f / 3591.0f) * (187.0f / 3591.0f)};
+        float constant_loss {2.78f};
+        float error_weight_low {1.0f}; // rad/s, not the legacy mixed-unit error.
+        float error_weight_high {2.0f};
+        float cap_base_energy {100.0f};
+        float cap_full_energy {250.0f};
+        float buffer_base_energy {50.0f};
+        float buffer_full_energy {60.0f};
+        float energy_kp {50.0f};
+        float energy_kd {0.0002f}; // Legacy kd=0.2 per 1 ms -> seconds derivative.
+        bool rls_enabled {false};
+        float rls_forgetting_factor {0.9999f};
+        float rls_initial_covariance {0.00001f};
+        float rls_period {0.01f}; // Seconds; consume a measurement only once.
+        float max_speed_loss {20.0f};
+        float max_torque_loss {20.0f};
     };
 
-    struct PowerObj
-    {
-       public:
-        float pidOutput;     // torque current command, [-maxOutput, maxOutput], no unit
-        float curAv;         // Measured angular velocity, [-maxAv, maxAv], rad/s
-        float setAv;         // target angular velocity, [-maxAv, maxAv], rad/s
-        float pidMaxOutput;  // pid max output
-    };
+    power_manager() = default;
+    static bool valid_configuration(const info_type& info);
+    bool init(const info_type& info);
+    bool configured() const { return configured_; }
+    bool enabled() const { return configured_ && info_.enabled; }
+    const power_allocation& status() const { return status_; }
 
-    struct Manager
-    {
-        enum RLSEnabled : bool
-        {
-            Disable = 0,
-            Enable = 1
-        } rlsEnabled;
+    /** Pure numeric entry point; no hardware access or asynchronous work. */
+    power_allocation allocate(const std::array<power_wheel, 4>& wheels,
+                              const power_feedback& feedback, bool output_allowed,
+                              float dt_seconds);
+    /** Apply the exact allocated absolute caps to the bound wheel actuators. */
+    void update(device::chassis_base& chassis, const power_feedback& feedback,
+                bool output_allowed, float dt_seconds);
+    /** Capture fresh referee/capacitor telemetry in the control layer. */
+    awaitable<void> update(device::chassis_base& chassis, bool output_allowed, float dt_seconds);
 
-        enum ErrorFlags
-        {
-            MotorDisconnect = 1U,
-            RefereeDisConnect = 2U,
-            CAPDisConnect = 4U
-        };
+private:
+    float energy_limit(const power_feedback& feedback, float dt_seconds);
+    void update_model(const std::array<power_wheel, 4>& wheels,
+                      const power_feedback& feedback, float dt_seconds);
+    void reset_energy();
 
-        uint8_t error;
+    info_type info_ {};
+    bool configured_ {false};
+    power_allocation status_ {};
+    float speed_loss_ {};
+    float torque_loss_ {};
+    std::array<std::array<double, 2>, 2> covariance_ {};
+    float previous_base_error_ {};
+    float previous_full_error_ {};
+    unsigned energy_source_ {};
+    float rls_elapsed_ {};
+    std::uint64_t last_measurement_sequence_ {};
+    std::uint64_t rls_updates_ {};
+};
 
-        /**
-         * @remark In case of initialization without explicit datas
-         */
-        Manager() = delete;
+static_assert(utils::singleton<power_manager>);
 
-        Manager(
-            std::deque<Hardware::DJIMotor> &motors_,
-            const Division division_,
-            RLSEnabled rlsEnabled_ = Enable,
-            const float k1_ = 0.22f,
-            const float k2_ = 1.2f,
-            const float k3_ = 2.78f,
-            const float lambda_ = 0.9999f);
-
-        std::deque<Hardware::DJIMotor> &motors;
-        Division division;
-
-        float powerBuff;
-        float fullBuffSet;
-        float baseBuffSet;
-        float fullMaxPower;
-        float baseMaxPower;
-
-        float powerUpperLimit;
-        float powerLowerLimit;
-        float refereeMaxPower;
-
-        float userConfiguredMaxPower;
-        float (*callback)(void);
-
-        float measuredPower;
-        float estimatedPower;
-        float estimatedCapEnergy;
-
-        float k1;
-        float k2;
-        float k3;
-
-        size_t lastUpdateTick;
-
-        utils::RLS<2> rls;
-
-        ControllerList powerPD_base;
-        ControllerList powerPD_full;
-
-        std::shared_ptr<Robot::Robot_set> robot_set;
-        std::shared_ptr<Device::Super_Cap> supercap;
-        std::shared_ptr<Device::Dji_referee> referee;
-
-        void init(const std::shared_ptr<Robot::Robot_set> &robot);
-        std::array<float, 4> getControlledOutput(PowerObj *objs[4]);
-        void setMaxPowerConfigured(float maxPower);
-        void setMode(uint8_t mode); //功率最大值设置
-        [[noreturn]] void powerDaemon (); //电源守护进程
-    };
-
-#define POWER_PD_KP 50.0f
-    const typename Pid::PidConfig powerPD_base_pid_config{
-        POWER_PD_KP, 0.0f, 0.2f, MAX_CAP_POWER_OUT, 0.0f,
-    };
-    const typename Pid::PidConfig powerPD_full_pid_config{
-        POWER_PD_KP, 0.0f, 0.2f, MAX_CAP_POWER_OUT, 0.0f,
-    };
-
-    /**
-     * @brief Storing the power status of the chassis
-     */
-    struct PowerStatus
-    {
-       public:
-        float userConfiguredMaxPower;
-        float maxPowerLimited;
-        float sumPowerCmd_before_clamp;
-        float effectivePower;
-        float powerLoss;
-        float efficiency;
-        uint8_t estimatedCapEnergy;
-        Manager::ErrorFlags error;
-    };
-
-    // return the latest feedback referee power limit(before referee disconnected),
-    // according to the robot level
-    //TODO 完成定义
-    float getLatestFeedbackJudgePowerLimit();
-
-    /**
-     * @brief Get the controlled output torque current based on current model
-     * @param objs The collections of power objects from four wheels, recording the
-     * necessary data from the PID controller
-     * @retval The controlled output torque current
-     */
-    std::array<float, 4> getControlledOutput(PowerObj *objs[4]);
-
-    /**
-     * @brief return the power status of the chassis
-     * @retval The power status object
-     */
-    const volatile PowerStatus &getPowerStatus();
-
-    /**
-     * @brief set the user configured max power
-     * @param maxPower The max power value
-     * @note The max power configured by this function will compete with the basic
-     * energy limitation, to ensure system does not die
-     */
-    void setMaxPowerConfigured(float maxPower);
-
-
-    /**
-     * @brief Enable for disable the automatically parameters update process
-     * @param isUpdate disable with 0, enable with 1
-     * @note  The system will automatically disable the update when both referee
-     * system and cap is disconnect from the power module
-     * @retval None
-     */
-    void setRLSEnabled(uint8_t isUpdate);
-
-    void setMode(uint8_t mode);
-
-    void registerPowerCallbackFunc(float (*callback)(void));
-
-}
-
-}  // namespace Power
-
-#endif // ROBOCTRL_ENABLE_LEGACY_POWER_MANAGER
+} // namespace roboctrl::ctrl

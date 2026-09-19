@@ -11,8 +11,8 @@
  */
 #pragma once
 #include <cstddef>
-#include <cstdint>
 #include <type_traits>
+#include <stdexcept>
 
 #include "core/async.hpp"
 #include "core/logger.h"
@@ -20,51 +20,14 @@
 #include "device/base.hpp"
 #include "utils/controller.hpp"
 #include "utils/utils.hpp"
-#include "io/base.hpp"
 
 namespace roboctrl::device{
-
-///@cond INTERNAL
-namespace details{
-
-    //通用电机测量数据。
-struct motor_measure{
-    uint16_t ecd = 0;
-    int16_t speed_rpm = 0;
-    int16_t given_current = 0;
-    uint8_t temperate = 0;
-};
-
-struct motor_upload_pkg {
-    uint8_t angle_h     : 1;
-    uint8_t angle_l     : 1;
-    uint8_t speed_h     : 1;
-    uint8_t speed_l     : 1;
-    uint8_t current_h   : 1;
-    uint8_t current_l   : 1;
-    uint8_t temperature : 1;
-    uint8_t unused      : 1;
-} __attribute__((packed));
-
-inline motor_measure parse_motor_upload_pkg(io::byte_span data)
-{
-    motor_upload_pkg pkg = utils::from_bytes<motor_upload_pkg>(data);
-    return {
-        .ecd = utils::make_u16(pkg.angle_h, pkg.angle_l),
-        .speed_rpm = utils::make_i16(pkg.speed_h, pkg.speed_l),
-        .given_current = utils::make_i16(pkg.current_h, pkg.current_l),
-        .temperate = static_cast<uint8_t>(pkg.temperature)
-    };
-}
-
-}
-/// @endcond 
 
 struct motor_base : public device_base {
 protected:
     float angle_ {}; //rad
     float angle_speed_ {}; //rad/s
-    float torque_ {}; // A
+    float torque_ {}; // Driver-defined raw current counts or torque Nm; see motor-protocols.md.
     float radius_ {}; // m
 
 public:
@@ -72,6 +35,23 @@ public:
 
     /** Set the device-specific target (usually speed or current). */
     virtual awaitable<void> set(fp32 target) = 0;
+    /** Explicit output-shaft speed, rad/s; set() remains linear speed in m/s. */
+    virtual awaitable<void> set_angle_speed(fp32 target) { co_await set(target * radius_); }
+    /** Raw driver command units, not amperes. Unsupported drivers reject this mode. */
+    virtual awaitable<void> set_current(fp32) {
+        throw std::logic_error("motor does not support direct current control");
+        co_return;
+    }
+    virtual bool supports_current_control() const { return false; }
+    /** A valid feedback frame may still report a drive fault. */
+    virtual bool faulted() const { return false; }
+    virtual fp32 requested_current() const { return 0.f; }
+    virtual fp32 current_feedback_raw() const { return torque_; }
+    virtual fp32 max_current() const { return 0.f; }
+    virtual fp32 target_angle_speed() const { return 0.f; }
+    virtual void set_output_scale(fp32) {}
+    virtual void set_current_limit(fp32) {}
+    fp32 radius() const { return radius_; }
     /** Enable output. */
     virtual awaitable<void> enable() = 0;
     /** Disable output and clear any pending command. */
@@ -101,9 +81,9 @@ public:
     inline fp32 rpm() const { return angle_speed_ * 60.f / (2.f * Pi_f); }
     
     /**
-     * @brief 获取电机扭矩（单位为A）
+     * @brief 获取驱动定义的反馈：DJI/M9025 原始电流计数，J6006 为 Nm。
      * 
-     * @return fp32 电机扭矩（单位为A）
+     * @return fp32 驱动反馈，不能把不同类型的原始值直接混用。
      */
     inline fp32 torque() const { return torque_; }
     

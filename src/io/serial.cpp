@@ -38,6 +38,7 @@ void serial::start() {
 
 roboctrl::awaitable<void> serial::send(uint8_t id,byte_span data)
 {
+    if (info_.raw) throw std::logic_error("keyed send is unavailable on raw serial");
     if (data.size() > 1024) {
         throw std::invalid_argument("serial payload cannot exceed 1024 bytes");
     }
@@ -48,6 +49,12 @@ roboctrl::awaitable<void> serial::send(uint8_t id,byte_span data)
     frame.push_back(static_cast<std::byte>(id));
     frame.insert(frame.end(), data.begin(), data.end());
     co_await write_queue_.send(frame);
+}
+
+roboctrl::awaitable<void> serial::send_raw(byte_span data)
+{
+    if (!info_.raw) throw std::logic_error("raw send requires serial.raw=true");
+    co_await write_queue_.send(data);
 }
 
 void serial::process_receive_buffer()
@@ -89,6 +96,10 @@ roboctrl::awaitable<void> serial::task()
         while(true){
             const auto bytes = co_await port_.async_read_some(
                 asio::buffer(read_buffer_), asio::use_awaitable);
+            if (info_.raw) {
+                raw_callbacks_(make_shared_from(byte_span{read_buffer_.data(), bytes}));
+                continue;
+            }
             receive_buffer_.insert(receive_buffer_.end(), read_buffer_.begin(), read_buffer_.begin() + bytes);
             process_receive_buffer();
         }

@@ -14,7 +14,6 @@
 #include "config/runtime.hpp"
 #include "config/validate.hpp"
 #include "ctrl/control_mapping.hpp"
-#include "ctrl/shoot_logic.hpp"
 #include "device/motor/base.hpp"
 #include "device/imu/base.hpp"
 #include "device/controlpad.h"
@@ -80,15 +79,13 @@ void test_motor_base_runtime_polymorphism() {
     std::array<motor_base*, 2> motors{&a, &b};
 
     asio::io_context context;
-    auto done = asio::co_spawn(
-        context,
-        [&]() -> awaitable<void> {
+    auto exercise_motors = [&]() -> awaitable<void> {
             co_await motors[0]->set(7.0f);
             co_await motors[1]->set(8.0f);
             co_await motors[0]->enable();
             co_await motors[1]->enable();
-        }(),
-        asio::use_future);
+        };
+    auto done = asio::co_spawn(context, exercise_motors(), asio::use_future);
     context.run();
     done.get();
 
@@ -185,8 +182,8 @@ struct add_stage final : roboctrl::utils::control_stage<roboctrl::fp32> {
 void test_control_chain_and_explicit_dt() {
     roboctrl::utils::linear_pid pid{{.kp = 1.0f, .ki = 1.0f, .kd = 0.0f,
                                      .max_out = 10.0f, .max_iout = 10.0f}};
-    pid.set_target(1.0f);
-    pid.update(0.0f, 0.1f);
+    pid.update(1.0f, 0.0f, 0.1f);
+    assert(pid.target() == 1.0f);
     assert(std::fabs(pid.state() - 1.1f) < 1e-6f);
 
     roboctrl::utils::ramp_f ramp{{.acc = 2.0f}};
@@ -283,16 +280,6 @@ void test_control_mapping_requires_arm_and_preserves_edges() {
     assert(command.velocity.x == 0.0f);
 }
 
-void test_shoot_interlocks() {
-    using roboctrl::ctrl::trigger_feed_allowed;
-    using roboctrl::ctrl::trigger_jammed;
-    assert(trigger_jammed(4500.0f, 0.5f, 4000.0f, 1.0f));
-    assert(!trigger_jammed(3500.0f, 0.5f, 4000.0f, 1.0f));
-    assert(trigger_feed_allowed(true, true, true, true, false));
-    assert(!trigger_feed_allowed(true, true, true, true, true));
-    assert(!trigger_feed_allowed(true, false, true, true, false));
-}
-
 void test_rejects_invalid_control_configuration() {
     auto config_directory = std::filesystem::current_path();
     while (!std::filesystem::exists(config_directory / "configs")) {
@@ -349,7 +336,18 @@ void test_runtime_configuration_files() {
              "configs/sentry.yaml",
              "configs/project.yaml",
         }) {
-        const auto config = roboctrl::config::load_configuration(config_directory / path);
+        auto config = roboctrl::config::load_configuration(config_directory / path);
+        if (std::string_view{path} == "configs/sentry.yaml") {
+            // The source topology contains a confirmed 0x201 conflict; no guessed CAN remap.
+            assert(!config);
+            assert(config.error().find("overlaps a motor feedback ID") != std::string::npos);
+            const auto text = roboctrl::config::read_text_file(config_directory / path);
+            assert(text);
+            auto parsed = rfl::yaml::read<roboctrl::config::runtime_config, rfl::NoExtraFields,
+                rfl::DefaultIfMissing>(*text);
+            assert(parsed);
+            config = std::move(*parsed); // Structural assertions only, not deployment validity.
+        }
         if (!config) {
             std::cerr << path << ": " << config.error() << '\n';
         }
@@ -359,8 +357,14 @@ void test_runtime_configuration_files() {
         assert(!config->dji_motors.empty());
         if (std::string_view{path} == "configs/sentry.yaml") {
             assert(config->cans.size() == 3);
-            assert(config->serials.size() == 2);
-            assert(config->dji_motors.size() == 11);
+            assert(config->serials.size() == 3);
+            assert(config->dji_motors.size() == 9);
+            assert(config->j6006_motors.size() == 1);
+            assert(config->additional_imus.size() == 1);
+            assert(config->robot.gimbal_info.imu_key == "imu_head");
+            assert(config->robot.large_yaw_info);
+            assert(!config->robot.large_yaw_info->yaw_zero_calibrated);
+            assert(config->robot.large_yaw_info->yaw_motor_type == "j6006");
             assert(config->robot.enable_chassis);
             assert(config->robot.enable_gimbal);
             assert(config->robot.enable_shoot);
@@ -375,7 +379,25 @@ void test_runtime_default_configuration_path() {
 
 } // namespace
 
+void test_motor_protocols();
+void test_network_protocols();
+void run_referee_protocol_tests();
+void test_power_control();
+void run_ballistics_tests();
+void run_shoot_integration_tests();
+void run_motion_migration_tests();
+void run_configuration_migration_tests();
+
 int main() {
+    test_motor_protocols();
+    test_network_protocols();
+    run_referee_protocol_tests();
+    test_power_control();
+    run_ballistics_tests();
+    run_shoot_integration_tests();
+    run_motion_migration_tests();
+    run_configuration_migration_tests();
+
     test_motor_base_runtime_polymorphism();
     test_multiton_rejects_duplicate_before_construction();
     test_combined_parser();
@@ -385,7 +407,6 @@ int main() {
     test_control_chain_and_explicit_dt();
     test_matrix_and_rls_initialization();
     test_control_mapping_requires_arm_and_preserves_edges();
-    test_shoot_interlocks();
     test_rejects_invalid_control_configuration();
     test_runtime_configuration_files();
     test_runtime_default_configuration_path();

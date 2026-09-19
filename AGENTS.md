@@ -52,3 +52,13 @@
 - [`docs/modules/config-build.md`](docs/modules/config-build.md)：机器人配置、构建、运行和部署边界
 - [`docs/modules/utils.md`](docs/modules/utils.md)：控制器、回调、数学与通用工具
 - [`docs/development.md`](docs/development.md)：修改流程、扩展模板和文档维护规则
+
+### 剩余迁移专题
+
+- [迁移清单](docs/migration-gkd-control.md) 与 [验证记录](docs/migration-verification.md)
+- [运动与多云台](docs/modules/motion-migration.md)
+- [电机与超容协议](docs/modules/motor-protocols.md)
+- [视觉、导航与遥测](docs/modules/network-control.md)
+- [裁判、UI 与发射许可](docs/modules/referee.md)
+- [功率模型与实际限流](docs/modules/power-control.md)
+- [弹道与调参工具](docs/modules/ballistics-tools.md)

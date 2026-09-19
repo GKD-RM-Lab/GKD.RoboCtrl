@@ -1,18 +1,18 @@
+# Migrated software profile; PID ki=legacy_ki/dt and kd=legacy_kd*dt.
+# Hardware signs, gains and zero positions still require bench verification.
 schema_version: 1
 profile: project
-
 cans:
   - {name: CAN_CHASSIS, interface_name: CAN_CHASSIS}
 serials:
   - {name: serial1, device: /dev/IMU_HERO, baud_rate: 115200}
 dji_motors:
-  - {type_: M3508, id: 2, name: left_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
-  - {type_: M3508, id: 1, name: right_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
-  - {type_: M3508, id: 4, name: right_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
-  - {type_: M3508, id: 3, name: left_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
-
+  - {type_: M3508, id: 2, name: left_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 1, name: right_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 4, name: right_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 3, name: left_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
 control_pad: {name: control_pad, serial_name: serial1}
-imu: {name: imu, serial_name: serial1}
+imu: {name: imu, serial_name: serial1, pitch_sign: -1.0, gyro_scale: 1.7453292519943296e-05}
 robot:
   chassis_info:
     left_front_motor: left_front_motor
@@ -21,7 +21,15 @@ robot:
     right_rear_motor: right_rear_motor
     control_time: {count: 2, unit: milliseconds}
     max_rotate_speed: 1.0
+    wheel_directions: [-1, 1, -1, 1]
   control_pad_key: control_pad
   enable_chassis: true
   enable_gimbal: false
   enable_shoot: false
+  chassis_type: device.gkd_sentry_chassis.v1
+  motion_info:
+    control_time: {count: 2, unit: milliseconds}
+    follow_pid: {kp: 2, ki: 0.0, kd: 0.02, max_out: 6, max_iout: 0.2}
+    follow_direction: 1.0
+    enable_follow: false
+power: {enabled: true, configured_power_limit: 35.0, offline_power_limit: 35.0, max_cap_boost: 0.0, rls_enabled: false}

@@ -1,51 +1,57 @@
+# Source topology intentionally fails preflight: J6006 command 0x201 overlaps trigger feedback.
+# Hardware bus/ID correction deferred by user; no guessed remapping is installed.
+# Migrated software profile; PID ki=legacy_ki/dt and kd=legacy_kd*dt.
+# Hardware signs, gains and zero positions still require bench verification.
+# J6006 zero is intentionally uncalibrated: FinishInit stays gated until measured.
 schema_version: 1
 profile: sentry
-
 cans:
   - {name: CAN_CHASSIS, interface_name: CAN_CHASSIS}
   - {name: CAN_BULLET, interface_name: CAN_BULLET}
   - {name: CAN_GIMBAL, interface_name: CAN_GIMBAL}
-
 serials:
   - {name: serial_big_yaw, device: /dev/IMU_BIG_YAW, baud_rate: 115200}
   - {name: serial_small_yaw, device: /dev/IMU_SMALL_YAW, baud_rate: 115200}
-
+  - {name: referee, device: /dev/REFEREE, baud_rate: 115200, raw: true}
 dji_motors:
-  # Sentry chassis: old GKD_Control order is LF=1, RF=2, RR=3, LR=4.
-  - {type_: M3508, id: 1, name: left_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
-  - {type_: M3508, id: 2, name: right_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
-  - {type_: M3508, id: 3, name: right_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
-  - {type_: M3508, id: 4, name: left_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 10.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
-
-  # Main sentry gimbal (the currently supported gimbal instance).
-  - {type_: M6020, id: 1, name: gimbal_yaw_motor, can_name: CAN_GIMBAL, radius: 1.0, pid_params: {kp: 765.8683, ki: 2.8509, kd: 0.0, max_out: 850.0, max_iout: 250.0}, control_time: {count: 1, unit: milliseconds}}
-  - {type_: M6020, id: 2, name: gimbal_pitch_motor, can_name: CAN_GIMBAL, radius: 1.0, pid_params: {kp: 5500.0, ki: 100.0, kd: 0.0, max_out: 30000.0, max_iout: 5000.0}, control_time: {count: 1, unit: milliseconds}}
-
-  # Auxiliary head gimbal from the old sentry controller. It is configured for
-  # topology validation, but is not bound until multi-gimbal support is added.
+  - {type_: M3508, id: 1, name: left_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 2, name: right_front_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 3, name: right_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
+  - {type_: M3508, id: 4, name: left_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
   - {type_: M6020, id: 1, name: head_yaw_motor, can_name: CAN_BULLET, radius: 1.0, pid_params: {kp: 5000.0, ki: 0.0, kd: 0.0, max_out: 20000.0, max_iout: 5000.0}, control_time: {count: 1, unit: milliseconds}}
-  - {type_: M6020, id: 2, name: head_pitch_motor, can_name: CAN_BULLET, radius: 1.0, pid_params: {kp: 4144.22, ki: 117.94, kd: 0.0, max_out: 30000.0, max_iout: 15000.0}, control_time: {count: 1, unit: milliseconds}}
-
-  # Sentry friction wheels and trigger motor.
-  - {type_: M3508, id: 1, name: left_friction, can_name: CAN_BULLET, radius: 0.075, pid_params: {kp: 2000.0, ki: 0.05, kd: 10.0, max_out: 16000.0, max_iout: 2000.0}, control_time: {count: 1, unit: milliseconds}}
-  - {type_: M3508, id: 2, name: right_friction, can_name: CAN_BULLET, radius: 0.075, pid_params: {kp: 2000.0, ki: 0.05, kd: 10.0, max_out: 16000.0, max_iout: 2000.0}, control_time: {count: 1, unit: milliseconds}}
-  - {type_: M3508, id: 1, name: trigger, can_name: CAN_GIMBAL, radius: 0.075, pid_params: {kp: 800.0, ki: 0.5, kd: 0.0, max_out: 10000.0, max_iout: 9000.0}, control_time: {count: 1, unit: milliseconds}}
-
+  - {type_: M6020, id: 2, name: head_pitch_motor, can_name: CAN_BULLET, radius: 1.0, pid_params: {kp: 4144.22, ki: 117940.0, kd: 0.0, max_out: 30000.0, max_iout: 15000.0}, control_time: {count: 1, unit: milliseconds}}
+  - {type_: M3508, id: 1, name: left_friction, can_name: CAN_BULLET, radius: 0.075, pid_params: {kp: 2000.0, ki: 50.0, kd: 0.01, max_out: 16000.0, max_iout: 2000.0}, control_time: {count: 1, unit: milliseconds}}
+  - {type_: M3508, id: 2, name: right_friction, can_name: CAN_BULLET, radius: 0.075, pid_params: {kp: 2000.0, ki: 50.0, kd: 0.01, max_out: 16000.0, max_iout: 2000.0}, control_time: {count: 1, unit: milliseconds}}
+  - {type_: M3508, id: 1, name: trigger, can_name: CAN_GIMBAL, radius: 0.075, pid_params: {kp: 800.0, ki: 500.0, kd: 0.0, max_out: 10000.0, max_iout: 9000.0}, control_time: {count: 1, unit: milliseconds}}
 control_pad: {name: control_pad, serial_name: serial_big_yaw}
-imu: {name: imu, serial_name: serial_big_yaw}
-
+imu: {name: imu, serial_name: serial_big_yaw, pitch_sign: -1.0, gyro_scale: 1.7453292519943296e-05}
 robot:
   gimbal_info:
-    imu_key: imu
-    yaw_motor_key: gimbal_yaw_motor
-    pitch_motor_key: gimbal_pitch_motor
-    yaw_angle_pid: {kp: 8.0, ki: 0.0, kd: 10.0, max_out: 15.0, max_iout: 5.0}
-    pitch_angle_pid: {kp: 15.0, ki: 0.0, kd: 10.0, max_out: 10.0, max_iout: 0.0}
+    imu_key: imu_head
+    yaw_motor_key: head_yaw_motor
+    pitch_motor_key: head_pitch_motor
+    yaw_angle_pid: {kp: 25, ki: 0.0, kd: 0.025, max_out: 10, max_iout: 0}
+    pitch_angle_pid: {kp: 10.86, ki: 28.0, kd: 0.0, max_out: 25, max_iout: 1}
     yaw_direction: 1.0
     pitch_direction: 1.0
     pitch_min: -0.18
     pitch_max: 0.51
     control_time: {count: 1, unit: milliseconds}
+    yaw_motor_type: dji
+    pitch_motor_type: dji
+    yaw_angle_direction: -1.0
+    yaw_recenter_direction: 1.0
+    yaw_current_control: true
+    pitch_current_control: true
+    yaw_zero_calibrated: true
+    recenter_on_enable: true
+    init_tolerance: 0.1
+    init_settle_time: {count: 2000, unit: milliseconds}
+    init_pitch: 0.0
+    yaw_zero: 2.100019698615443
+    yaw_relative_pid: {kp: 25, ki: 0.0, kd: 0.025, max_out: 10, max_iout: 0}
+    yaw_rate_pid: {kp: 5000, ki: 0.0, kd: 0.0, max_out: 20000, max_iout: 5000}
+    pitch_rate_pid: {kp: 4144.22, ki: 117940.0, kd: 0.0, max_out: 30000, max_iout: 15000}
   chassis_info:
     left_front_motor: left_front_motor
     right_front_motor: right_front_motor
@@ -53,21 +59,71 @@ robot:
     right_rear_motor: right_rear_motor
     control_time: {count: 2, unit: milliseconds}
     max_rotate_speed: 1.0
+    wheel_directions: [-1, 1, -1, 1]
   shoot_info:
-    friction_params: {acc: 100.0}
+    friction_params: {acc: 1.0}
     friction_max_speed: 2.5
     trigger_speed: 6.0
     friction_ready_speed: 1.5
     jam_current: 4000.0
     jam_speed: 1.0
-    jam_release_time: {count: 50, unit: milliseconds}
+    jam_release_time:
+      count: 50
+      unit: milliseconds
     control_time: {count: 1, unit: milliseconds}
     left_friction_motor: left_friction
     right_friction_motor: right_friction
     trigger_motor: trigger
+    enforce_referee: true
+    bullet_caliber: 17
   chassis_type: device.gkd_sentry_chassis.v1
   gimbal_type: device.gkd_sentry_gimbal.v1
   control_pad_key: control_pad
   enable_chassis: true
   enable_gimbal: true
   enable_shoot: true
+  motion_info:
+    control_time: {count: 2, unit: milliseconds}
+    follow_pid: {kp: 4, ki: 0.0, kd: 0.02, max_out: 6, max_iout: 0.2}
+    follow_direction: 1.0
+    enable_follow: true
+    primary_aim_key: primary_aim
+    remote_logger_key: telemetry
+    telemetry_period: {count: 50, unit: milliseconds}
+    navigation_key: navigation
+    enable_navigation: true
+    search_when_vision_stale: true
+    search_yaw_speed: 1.0
+    search_pitch_speed: 4.0
+    search_pitch_amplitude: 0.345
+    search_pitch_center: 0.165
+    large_yaw_follow_direction: 1.0
+  large_yaw_info:
+    imu_key: imu
+    yaw_motor_key: large_yaw_motor
+    yaw_motor_type: j6006
+    yaw_only: true
+    yaw_current_control: false
+    yaw_zero: 0.0
+    yaw_zero_calibrated: false
+    recenter_on_enable: true
+    yaw_angle_pid: {kp: 8, ki: 0.0, kd: 0.01, max_out: 10, max_iout: 5}
+    yaw_relative_pid: {kp: 3.6, ki: 0.0, kd: 0.008, max_out: 10, max_iout: 0}
+    yaw_angle_direction: -1.0
+    yaw_recenter_direction: 1.0
+    control_time: {count: 1, unit: milliseconds}
+power: {enabled: true, configured_power_limit: 35.0, offline_power_limit: 35.0, max_cap_boost: 0.0, rls_enabled: false}
+referee: {serial_name: referee, offline_timeout: {count: 1000, unit: milliseconds}, ui_enabled: false, ui_period: {count: 100, unit: milliseconds}}
+super_cap: {can_name: CAN_CHASSIS, receive_id: 81, command_id: 97, max_power_limit: 150, resend_time: {count: 50, unit: milliseconds}, command_timeout: {count: 100, unit: milliseconds}}
+udp_servers:
+  - {key_: control_udp, address: "127.0.0.1", port: 11451}
+aim_links:
+  - {key_: primary_aim, udp_name: control_udp, address: "127.0.0.1", port: 11453, header: 106, wire_format: legacy_14, target_timeout_ms: 100}
+remote_loggers:
+  - {key_: telemetry, udp_name: control_udp, address: "127.0.0.1", port: 8080}
+additional_imus:
+  - {name: imu_head, serial_name: serial_small_yaw, pitch_sign: -1.0, gyro_scale: 1.7453292519943296e-05}
+j6006_motors:
+  - {name: large_yaw_motor, can_name: CAN_GIMBAL, id: 1, master_id: 0, max_speed: 10.0, radius: 1.0, feedback_range: {position_max: 12.5, velocity_max: 45.0, torque_max: 20.0}, offline_timeout: {count: 100, unit: milliseconds}, control_time: {count: 1, unit: milliseconds}}
+navigation_links:
+  - {key_: navigation, udp_name: control_udp, address: "127.0.0.1", port: 11456, target_timeout_ms: 200}

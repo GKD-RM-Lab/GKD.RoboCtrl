@@ -1,0 +1,13 @@
+time_s,name,value
+0.000,target_rad_s,0
+0.000,feedback_rad_s,0
+0.010,target_rad_s,1
+0.010,feedback_rad_s,0.1
+0.020,target_rad_s,1
+0.020,feedback_rad_s,0.5
+0.030,target_rad_s,1
+0.030,feedback_rad_s,0.8
+0.040,target_rad_s,1
+0.040,feedback_rad_s,0.98
+0.050,target_rad_s,1
+0.050,feedback_rad_s,1.02

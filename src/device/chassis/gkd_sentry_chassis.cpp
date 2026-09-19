@@ -26,6 +26,7 @@ bool gkd_sentry_chassis::init(const gkd_sentry_chassis::info_type& info){
     right_rear_motor_ = &roboctrl::get<dji_motor>(info.right_rear_motor);
     control_time_ = info.control_time;
     max_rotate_speed_ = info.max_rotate_speed;
+    wheel_directions_ = info.wheel_directions;
     log_info("Chassis initiated");
     roboctrl::spawn(task());
     return true;
@@ -40,16 +41,16 @@ roboctrl::awaitable<void> gkd_sentry_chassis::speed_decomposition(){
         co_return;
     }
 
-    const auto wheels = utils::kinematics::inverse_mecanum(
-        velocity_, rotate_speed_, max_wheel_speed_);
+    const auto wheels = utils::kinematics::mecanum_motor_targets(
+        velocity_, rotate_speed_, max_wheel_speed_, wheel_directions_);
 
-    log_debug("left_front_motor : {}",wheels.left_front);
-    log_debug("right_front_motor : {}",-wheels.right_front);
-    log_debug("left_rear_motor : {}",wheels.left_rear);
-    log_debug("right_rear_motor : {}",-wheels.right_rear);
+    log_debug("left_front_motor : {}",wheels[0]);
+    log_debug("right_front_motor : {}",wheels[1]);
+    log_debug("left_rear_motor : {}",wheels[2]);
+    log_debug("right_rear_motor : {}",wheels[3]);
 
-    co_await left_front_motor_->set(wheels.left_front);
-    co_await right_front_motor_->set(-wheels.right_front);
-    co_await left_rear_motor_->set(wheels.left_rear);
-    co_await right_rear_motor_->set(-wheels.right_rear);
+    co_await left_front_motor_->set(wheels[0]);
+    co_await right_front_motor_->set(wheels[1]);
+    co_await left_rear_motor_->set(wheels[2]);
+    co_await right_rear_motor_->set(wheels[3]);
 }

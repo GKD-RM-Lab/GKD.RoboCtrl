@@ -3,6 +3,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace roboctrl::device {
 namespace {
@@ -41,7 +42,13 @@ gimbal_base* gimbal_registry::create(std::string_view type, const std::any& info
         if (it == gimbal_factories().end()) return nullptr;
         creator = it->second;
     }
-    return creator(info);
+    auto result = creator(info);
+    if (!result) return nullptr;
+    auto* pointer = result.get();
+    // Controllers and their coroutines live for the process lifetime.
+    static std::vector<std::unique_ptr<gimbal_base>> instances;
+    instances.push_back(std::move(result));
+    return pointer;
 }
 
 bool gimbal_registry::init(std::string_view type, const std::any& info) {

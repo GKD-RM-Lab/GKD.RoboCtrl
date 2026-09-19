@@ -43,7 +43,7 @@ roboctrl::awaitable<void> udp::task()
         }
     } catch (const asio::system_error& error) {
         if (error.code() != asio::error::operation_aborted) {
-            log_warn("udp receive stopped: {}", error.what());
+            roboctrl::logger::instance().log_warn("udp receive stopped: {}", error.what());
         }
     }
 }

@@ -30,28 +30,48 @@ using namespace roboctrl::log;
 
 static bool initialize_system(const config::runtime_config& system_config){
     try{
-        config::validate_configuration(
-            std::span{system_config.cans},
-            std::span{system_config.serials},
-            std::span{system_config.dji_motors},
-            system_config.control_pad,
-            system_config.imu,
-            system_config.robot
-        );
+        const auto validated = config::validate_runtime_configuration(system_config);
+        if (!validated) throw std::invalid_argument(validated.error());
 
         check_init(std::span{system_config.cans});
         check_init(std::span{system_config.serials});
+        check_init(std::span{system_config.udp_servers});
         check_init(std::span{system_config.dji_motors});
+        check_init(std::span{system_config.j6006_motors});
+        check_init(std::span{system_config.m9025_motors});
         check_init(system_config.control_pad);
         check_init(system_config.imu);
+        check_init(std::span{system_config.additional_imus});
+        check_init(std::span{system_config.aim_links});
+        check_init(std::span{system_config.navigation_links});
+        check_init(std::span{system_config.remote_loggers});
+        if (system_config.referee) { check_init(*system_config.referee); }
+        if (system_config.super_cap) { check_init(*system_config.super_cap); }
 
         roboctrl::connect_all<device::dji_motor>();
+        roboctrl::connect_all<device::j6006>();
+        roboctrl::connect_all<device::m9025>();
+        roboctrl::connect_all<io::udp_server>();
+        roboctrl::connect_all<device::aim_link>();
+        roboctrl::connect_all<device::navigation_link>();
+        roboctrl::connect_all<device::remote_logger>();
+        if (system_config.referee) device::referee::instance().connect();
+        if (system_config.super_cap) device::super_cap::instance().connect();
         check_init(system_config.robot);
+        if (system_config.power) { check_init(*system_config.power); }
 
         roboctrl::start_all<io::can>();
         roboctrl::start_all<io::serial>();
+        roboctrl::start_all<io::udp_server>();
         roboctrl::start_all<device::dji_motor_group>();
         roboctrl::start_all<device::dji_motor>();
+        roboctrl::start_all<device::j6006>();
+        roboctrl::start_all<device::m9025>();
+        roboctrl::start_all<device::aim_link>();
+        roboctrl::start_all<device::navigation_link>();
+        roboctrl::start_all<device::remote_logger>();
+        if (system_config.referee) device::referee::instance().start();
+        if (system_config.super_cap) device::super_cap::instance().start();
     }
     catch(const std::exception& e){
         std::println("exception : {}",e.what());
@@ -76,7 +96,8 @@ int main(int argc,char** argv){
         ("h,help", "Print help")
         ("l,log", "Log level", cxxopts::value<std::string>()->default_value("info"))
         ("f,filter","Filter for logger",cxxopts::value<std::string>()->default_value(""))
-        ("c,config", "YAML or JSON configuration file", cxxopts::value<std::string>());
+        ("c,config", "YAML or JSON configuration file", cxxopts::value<std::string>())
+        ("check-config", "Validate configuration and exit without opening hardware");
     
     auto result = options.parse(argc, argv);
 
@@ -113,6 +134,11 @@ int main(int argc,char** argv){
     if (!loaded_config) {
         std::println("Configuration error: {}", loaded_config.error());
         return 1;
+    }
+
+    if (result.count("check-config")) {
+        std::println("Configuration is valid: {}", config_path.string());
+        return 0;
     }
 
     auto system_config = std::move(*loaded_config);

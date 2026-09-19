@@ -1,0 +1,21 @@
+{
+  "original_head": "cbe8a8a4d419fa5e87cfe00c8cb525ef748356cc",
+  "existing_diff_sha256": "bbc0a47cf9db7b100e549cf77a2b0e86b4a98950c3bcc33e9c834bba9384c71d",
+  "existing_user_changes": {
+    "docs/modules/device.md": "af7d40f8f1acc32797eb0defa07c447c2a325b88ea5e4e1b5d80cd8c98381efa",
+    "docs/modules/utils.md": "1862ab278abb16ae2caa2b95807f37a4c1e3a65176073a4118ec7440e8a74133",
+    "include/ctrl/shoot_logic.hpp": null,
+    "include/device/motor/base.hpp": "32bc15800830ec59068dbea83aeeb26ec69f08863cc989db70de79d46494b767",
+    "include/utils/pid.h": "68895d5addeab31de30c860b792ad31ef3c667baec0e65c77b342f93d1729159",
+    "src/ctrl/shoot.cpp": "a80cec8ec86b3fe705852d34e235e0d918cc6b85b46164a9ef405f216922b4c0",
+    "src/device/gimbal/gkd_sentry_gimbal.cpp": "754a31d162603c83eab0ddddaf9718194f36437384feb685b47caeaa58e86e0f",
+    "src/device/motor/dji.cpp": "a2591fcbb0dfd660f626f32c70928a07115cbad60f627f74a23f850313971efc",
+    "src/device/motor/m9025.cpp": "b25e0251df3fae1d26ec6d980eeac7a83f70d1dbcc34d9141e070fa62e32dc81",
+    "tests/unit_tests.cpp": "b272d4725a454acd3051157dd77533402277c45c4aea74db8a56a3c670930850"
+  },
+  "legacy_extra_sources": {
+    "include/device/J6006.hpp": "883da2364bec05192864ae5ff11422da12e74624a625120fd3eb9e73a5963e6a",
+    "src/device/J6006.cc": "aa2afbbb45fd66804d750c9e69c9832808a7fb956c1227d5d8423cc89cd2bee9",
+    "include/gimbal/gimbal_sentry.hpp": "fc8b1665396eaead95166421dff5467ef5b16116cd4076de9b2c088f68c25761"
+  }
+}

@@ -10,3 +10,7 @@ config.json
 
 doc/
 docs/html/
+
+# Python offline tools
+__pycache__/
+*.pyc

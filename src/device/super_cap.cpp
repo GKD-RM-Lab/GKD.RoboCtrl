@@ -1,44 +1,56 @@
 #include "device/super_cap.h"
-#include "core/async.hpp"
+#include "device/super_cap_protocol.hpp"
 #include "io/can.h"
-#include "utils/utils.hpp"
 
+using namespace roboctrl;
 using namespace roboctrl::device;
 
-struct __super_cap_recive_pkg
-{
-    uint8_t errorCode;
-    float chassisPower;
-    uint16_t chassisPowerlimit;
-    uint8_t capEnergy;
-} __attribute__((packed));
-
-bool super_cap::init(const super_cap::info_type& info){
+bool super_cap::init(const info_type& info) {
+    if (!valid_configuration(info)) throw std::invalid_argument("invalid super capacitor configuration");
+    if (configured_) throw std::logic_error("super capacitor already configured");
     info_ = info;
-
-    roboctrl::get<roboctrl::io::can>(info.can_name).on_data(0x51,[&](const __super_cap_recive_pkg& pkg){
-        chassis_power_ = pkg.chassisPower;
-        chassis_power_limit_ = pkg.chassisPowerlimit;
-        energy_ = pkg.capEnergy;
-        log_info("error code : {},chassis_power: {}, chassis_power_limit: {}, energy: {}",pkg.errorCode,chassis_power_,chassis_power_limit_,energy_);
-    });
-
+    configured_ = true;
     return true;
 }
 
-roboctrl::awaitable<void> super_cap::set(bool enable,uint16_t power_limit)
-{
-    std::array<std::byte,8> data{};
+void super_cap::connect() {
+    if (!configured_) throw std::logic_error("super capacitor must initialize before connect");
+    if (connected_) return;
+    get<io::can>(info_.can_name).on_data(info_.receive_id, [this](io::byte_span data) {
+        const auto feedback = super_cap_protocol::decode(data);
+        if (!feedback) return;
+        chassis_power_ = feedback->chassis_power;
+        chassis_power_limit_ = feedback->power_limit;
+        energy_ = feedback->energy;
+        error_code_ = feedback->error;
+        ++sample_sequence_;
+        tick();
+    }, 8);
+    connected_ = true;
+}
 
-    if(enable)
-        data[0] = utils::to_byte(1);
-    else 
-        data[0] = utils::to_byte(0);
+void super_cap::start() {
+    if (!connected_) throw std::logic_error("super capacitor must connect before start");
+    if (started_) return;
+    started_ = true;
+    roboctrl::spawn(task());
+}
 
-    data[1] = utils::to_byte(power_limit & 0xff);
-    data[2] = utils::to_byte(power_limit >> 8);
-    data[3] = utils::to_byte(50 & 0xff);
-    data[4] = utils::to_byte(50 >> 8);
+awaitable<void> super_cap::set(bool enabled, uint16_t power_limit) {
+    if (!configured_) throw std::logic_error("super capacitor is not configured");
+    requested_enabled_ = enabled;
+    requested_power_limit_ = std::min(power_limit, info_.max_power_limit);
+    last_command_ = std::chrono::steady_clock::now();
+    co_return;
+}
 
-    co_await roboctrl::get<roboctrl::io::can>(info_.can_name).send(0x61,data);
+awaitable<void> super_cap::task() {
+    while (true) {
+        const bool fresh = std::chrono::steady_clock::now() - last_command_ <= info_.command_timeout;
+        const bool enabled = super_cap_protocol::output_enabled(requested_enabled_, fresh, !offline(), error_code_);
+        const auto data = super_cap_protocol::encode(enabled,
+            fresh ? requested_power_limit_ : 0, info_.buffer_target);
+        co_await get<io::can>(info_.can_name).send(info_.command_id, data);
+        co_await wait_for(info_.resend_time);
+    }
 }

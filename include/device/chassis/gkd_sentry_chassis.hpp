@@ -29,6 +29,9 @@ public:
     }
     fp32 rotate_speed() const override { return rotate_speed_; }
     void set_enabled(bool enabled) override { enabled_ = enabled; }
+    std::array<motor_base*, 4> wheel_motors() const override {
+        return {left_front_motor_, right_front_motor_, left_rear_motor_, right_rear_motor_};
+    }
 
     using info_type = chassis_base::info_type;
 
@@ -41,6 +44,7 @@ private:
     fp32 rotate_speed_{};
     fp32 max_wheel_speed_{2.5f};
     fp32 max_rotate_speed_{1.0f};
+    std::array<int, 4> wheel_directions_ {1, -1, 1, -1};
     std::chrono::steady_clock::duration control_time_{1ms};
     motor_base* left_front_motor_{nullptr};
     motor_base* right_front_motor_{nullptr};

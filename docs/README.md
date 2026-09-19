@@ -20,6 +20,12 @@
 | 设备 | `include/device/`、`src/device/` | 协议解析、物理量、离线检测、电机输出 | [`modules/device.md`](modules/device.md) |
 | 控制 | `include/ctrl/`、`src/ctrl/` | 后台控制任务、整机状态与行为分发 | [`modules/control.md`](modules/control.md) |
 | 工具 | `include/utils/` | PID、斜坡、回调、矩阵/RLS、字节与类型工具 | [`modules/utils.md`](modules/utils.md) |
+| 运动迁移 | `ctrl/motion_control`、`device/gimbal` | 坐标/回中/IMU 内环/多云台/搜索 | [motion-migration](modules/motion-migration.md) |
+| 电机与超容协议 | `device/motor`、`device/super_cap` | DJI/J6006/M9025 codec 与安全输出 | [motor-protocols](modules/motor-protocols.md) |
+| 网络控制 | `io/udp_server`、`device/aim_link`、`device/remote_logger` | 视觉/导航/遥测协议与新鲜度 | [network-control](modules/network-control.md) |
+| 裁判与 UI | `device/referee`、`ctrl/shoot` | CRC/帧/状态、图元与发射许可 | [referee](modules/referee.md) |
+| 功率控制 | `ctrl/power_manager`、`ctrl/power_feedback` | 模型/分配/能量/RLS/实际电流门 | [power-control](modules/power-control.md) |
+| 弹道与工具 | `utils/ballistics`、`tools/` | 离线解算/预测、日志接收与绘图 | [ballistics-tools](modules/ballistics-tools.md) |
 
 旧工程 `GKD_Control` 的迁移范围、已落地行为和明确未迁移项见
 [`migration-gkd-control.md`](migration-gkd-control.md)。
@@ -35,14 +41,12 @@
 
 ## 当前基线摘要
 
-- 车型完全由运行时配置选择；未指定参数时默认加载 `configs/infantry.yaml`，也可用 `--config` 指定 `hero`、`sentry`、`project` 或自定义 YAML/JSON。
-- `src/main.cpp` 先打印所选配置目录下的全部配置文本，再整体验证并构造 CAN、串口、DJI 电机、遥控器和 IMU。
-- CAN、串口和 DJI 电机采用“构造 → 连接 → 启动”阶段，不在构造函数中启动长期协程。
-- Robot 默认进入 `NoForce`，DJI 电机默认禁用；遥控器完成双开关加滚轮解锁手势后进入 `FollowGimbal`，遥控失联会退回 `NoForce`。
-- Infantry/Hero/Sentry 启用底盘、云台和发射，Project 当前只启用底盘；Sentry 额外保留旧工程副云台电机拓扑，但当前只绑定一个主云台实例。“启用”不等于功能已经完整。
-- `device::chassis`/`device::gimbal` 已接入底层运动学、IMU 角度外环和电机速度目标；`ctrl::motion_control` 负责后台分发。`power_manager`、`referee`、M9025 等仍有明显骨架或未完成部分，详见模块文档。
-- `tests/unit_tests.cpp` 覆盖静态与四份运行时配置的校验/解析、multiton 重复键、组合解析器、底盘限速、遥控映射、发射互锁和 `motor_base` 运行时多态；CI 覆盖范围与已知限制见构建文档。
-- 运行主程序仍需要 Linux SocketCAN、串口和真实/仿真硬件；单元测试通过不等于实车安全。
+- 同一二进制运行时选择 YAML/JSON，默认 infantry；配置直接组成既有组件 info_type，硬件访问前做语义预检。
+- 电机/IO 按 construct/connect/start 接入；主程序默认 NoForce，只使能实际绑定执行器。云台解锁先受控回中，全部就绪才允许底盘/发射；遥控失联退回 NoForce。
+- 坐标变换、IMU 串级、视觉/导航、裁判/UI、超容、实际功率输出限制和辅助工具的软件迁移已接入，详细状态见 [迁移清单](migration-gkd-control.md)。
+- 哨兵真实拓扑是 J6006 大 yaw 加 DJI 小头/两 IMU；旧 CAN 映射冲突被预检拒绝，按用户要求暂不改硬件 ID。回中零位也未确认。
+- 无硬件测试覆盖配置/协议、真实控制协程配模拟设备、功率限流和算法；localhost 测试覆盖网络与回调所有权。运行主程序仍需要 Linux/硬件授权，单测通过不等于实车验证。
+- 本轮按用户要求未继续执行 xmake；最终证据见 [验证记录](migration-verification.md)。
 
 ## 按改动类型定位文档
 

@@ -31,12 +31,12 @@ Linux SocketCAN / serial / TCP / UDP
 1. xmake 只选择 Debug/Release 构建模式；程序通过 `--config` 选择运行时车型，未指定时使用 `configs/infantry.yaml`。`include/config/base.hpp` 仅保留默认配置名，不再定义车型编译宏。
 2. `src/main.cpp` 解析 `--help`、`--log`、`--filter`、`--config`，打印所选配置目录中的全部 YAML/JSON 文本，然后读取指定配置文件。
 3. `load_configuration()` 用 reflect-cpp 将文件直接反序列化为既有组件的 `info_type`；`validate_configuration()` 在访问硬件前检查 key、依赖、DJI ID/指令槽和控制模块必需电机。
-4. `roboctrl::init` 先构造 CAN、串口、DJI 电机、遥控器和 IMU；DJI 电机此时不注册回调或启动任务。
-5. `connect_all<dji_motor>()` 连接 CAN 回调和电机组，再初始化 `robot`；Robot 通过底盘/云台注册表选择设备，启动 `motion_control` 后台任务并默认保持 `NoForce`。
-6. 依次 `start_all<can>()`、`start_all<serial>()`、`start_all<dji_motor_group>()` 和 `start_all<dji_motor>()`；各 `start()` 是幂等的。
-7. `async::run()` 启动唯一的 `asio::io_context`，所有 IO 接收、周期控制和回调协程在同一线程协作运行。
+4. 先构造 CAN、串口、UDP 服务、电机、ControlPad、主/附加 IMU 和应用链路；可选裁判、超容通过各自 `init(info)` 保存配置。配置直接使用已有组件 info_type。
+5. 连接电机组/反馈、UDP 监听与应用回调、raw 裁判和超容；再初始化 Robot。云台工厂可拥有多个独立实例，控制层只使能实际绑定的执行器；Robot 初始 NoForce。随后初始化可选功率管理器。
+6. 启动 CAN、串口、UDP、DJI 分组/电机、J6006/M9025、应用链路、裁判/UI 与超容周期任务。所有 `start` 幂等；已注册的控制协程在运行事件循环之前不会执行。
+7. `async::run()` 启动唯一 `io_context`。构造/绑定/启动期间任何异常会终止初始化，不进入运行循环。
 
-运行后，双开关加俯仰拨轮解锁手势是从 `NoForce` 进入 `FollowGimbal` 的入口；100 ms 内无有效 ControlPad 报文时 Robot 会重新进入 `NoForce`。后台控制任务负责把输入分发给抽象底盘、云台和发射设备。
+运行后，双开关加俯仰拨轮解锁手势使有云台的配置从 `NoForce` 进入受控 `FinishInit`，机械回中稳定后进入 `FollowGimbal`；无云台车型直接进入运动状态；100 ms 内无有效 ControlPad 报文时 Robot 会重新进入 `NoForce`。后台控制任务负责把输入分发给抽象底盘、云台和发射设备。
 
 初始化顺序是隐式依赖注入的一部分。遥控器和串口 IMU 在构造时通过串口名称注册回调；DJI 电机刻意把构造与 `connect()` 分开，保证同批对象全部注册后才建立跨对象关系。顺序错误会由配置预检或 `get()` 明确报错。
 
@@ -52,7 +52,7 @@ validate → construct → connect/register callbacks → init controllers/NoFor
 项目用两种长生命周期对象模型：
 
 - **多例**：CAN、串口、网络端点、电机等同类多实例对象。`info_type` 提供 key，由 `multiton_impl<T>` 的静态 map 持有 `unique_ptr<T>`。
-- **单例**：异步上下文、整机、底盘、云台、发射器、超级电容等全局唯一对象。类继承 `singleton_base<T>`，由 `T::instance()` 持有，并通过 `init(info)` 完成显式初始化。
+- **单例**：异步上下文、整机、默认底盘/发射器、功率/裁判/超容等服务。多云台由注册表拥有独立对象，可选第二发射器由 Robot 拥有；其他单例类继承 `singleton_base<T>`，由 `T::instance()` 持有，并通过 `init(info)` 完成显式初始化。
 
 批量多例初始化会先检查当前表和本批次内的重复 key，再构造整批对象；`for_each_instance`、`connect_all`、`start_all` 提供阶段化批处理。`instance_ref<T>` 保存 key 并延迟查找具体多例。
 
@@ -71,8 +71,8 @@ SocketCAN 帧
   → io::can::task 读取 can_frame
   → keyed_io_base 按 CAN ID 分发
   → dji_motor 回调解析编码器/转速/电流并 tick()
-  → PID 根据目标速度和反馈更新 current_
-  → dji_motor_group 每 1 ms 聚合同一总线上的电流命令；禁用或离线电机贡献 0
+  → 电机周期任务按所选线/角速度模式更新 PID，或接收明确的外部电流目标
+  → dji_motor_group 每 1 ms 聚合同一总线上的电流命令；禁用或离线电机贡献 0，功率分配的绝对上限在此实际生效
   → io::can::send 下发 0x1ff / 0x200 / 0x2ff
 ```
 
@@ -94,6 +94,12 @@ SocketCAN 帧
 
 - 构建可以在无硬件环境执行；运行会打开 CAN/串口，并可能在事件循环开始后持续发送电机命令。
 - 启动失败可能来自设备文件、网络接口、权限、配置 key 或协议不匹配。不要通过吞掉异常来“让程序启动”。
-- 控制器的 `NoForce`、离线状态和功率限制应形成统一安全门；当前实现尚未完整闭环，因此新增执行器逻辑必须明确失联和禁用时输出什么。
+- 控制器的 `NoForce`、受控初始化、离线/故障状态和最终电流限制组成软件安全门；J6006 失效使用驱动禁用，不能把零速度当作零力矩。硬件标定和目标平台验证仍未完成。
 - 任何改变输出符号、单位、减速比、轮半径、CAN ID 或字节序的改动都属于硬件行为变更，必须同步文档并进行台架验证。
 - 当前 CI 和单元测试只覆盖无硬件逻辑。Linux 构建成功、测试通过、台架通过和实车通过必须分别报告。
+
+## 迁移扩展的数据流
+
+UDP → Device codec/来源/新鲜度 → motion 的视觉/导航策略 → gimbal/shoot；姿态、阵营和导航状态沿相反方向发送。raw 串口 → referee CRC/parser → 独立时间戳状态 → shoot 裁判许可、power 能量策略和 UI。power 每周期给绑定轮电机安装电流上限并刷新超容命令，IO 从不决定业务模式。
+
+哨兵使用 J6006 大 yaw 与 DJI 小头/两 IMU 的结构，但旧拓扑存在 0x201 冲突，被硬件打开前的预检拒绝；零位也仍未确认。完整边界见 [迁移记录](migration-gkd-control.md)。

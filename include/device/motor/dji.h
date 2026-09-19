@@ -13,6 +13,7 @@
 #include "core/logger.h"
 #include "core/async.hpp"
 #include "utils/pid.h"
+#include "protocol.hpp"
 
 namespace roboctrl::device{
 
@@ -36,13 +37,13 @@ public:
         using key_type = std::string;
         using owner_type = dji_motor;
 
-        type type_;
-        int id;
+        type type_ {};
+        int id {};
         std::string name;
         std::string can_name;
-        fp32 radius;
+        fp32 radius {};
         utils::linear_pid::params_type pid_params;
-        std::chrono::steady_clock::duration control_time;
+        std::chrono::steady_clock::duration control_time {};
         inline const std::string& key()const{return name;}
     };
 
@@ -59,23 +60,35 @@ public:
     void start();
 
     /**
-     * @brief 设置目标电流或速度（取决于电调模式）。
+     * @brief 设置线速度目标，单位 m/s；角速度与原始电流使用显式接口。
      */
     awaitable<void> set(fp32 speed) override;
+    awaitable<void> set_angle_speed(fp32 speed) override;
+    awaitable<void> set_current(fp32 command) override;
+    bool supports_current_control() const override { return true; }
+    fp32 requested_current() const override { return enabled_ && !offline() ? current_ : 0.f; }
+    fp32 max_current() const override { return std::min(info_.pid_params.max_out, 32767.f); }
+    fp32 target_angle_speed() const override { return mode_ == control_mode::linear ? pid_.target() / radius_ : pid_.target(); }
+    void set_output_scale(fp32 scale) override { output_scale_ = scale; }
+    void set_current_limit(fp32 limit) override { current_limit_ = limit; }
     awaitable<void> task();
     awaitable<void> enable() override { enabled_ = true; co_return; }
     void disable() override;
     void set_enabled(bool enabled) override;
 
     inline int16_t current() const {
-        return enabled_ && !offline() ? current_ : int16_t{0};
+        return motor_protocol::gated_current(current_, output_scale_, current_limit_, enabled_, !offline());
     }
 private: 
     std::pair<uint16_t,uint16_t> can_pkg_id() const;
 private:
     friend dji_motor_group;
     info_type info_;
-    int16_t current_ {0};
+    enum class control_mode { linear, angular, current };
+    control_mode mode_ {control_mode::linear};
+    fp32 current_ {0.f};
+    fp32 output_scale_ {1.f};
+    fp32 current_limit_ {std::numeric_limits<fp32>::infinity()};
     fp32 reduction_ratio_ {1.0f};
     utils::linear_pid pid_;
     bool connected_ {false};
@@ -131,7 +144,7 @@ private:
 
     struct motor_info{
         dji_motor* motor;
-        int id;
+        int id {};
         dji_motor::type type;
     };
 

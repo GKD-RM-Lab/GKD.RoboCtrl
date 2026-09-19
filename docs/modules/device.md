@@ -1,89 +1,37 @@
 # Device 模块
 
-路径：`include/device/`、`src/device/`
+路径：`include/device/`、`src/device/`。设备解释协议、维护物理量/在线状态并实现输出，不决定整机业务模式。
 
-Device 层解释 IO 报文、维护物理量与在线状态，并把控制目标编码为设备命令。它可以依赖 IO/Core，不应决定整机业务模式。
+## 生命周期与电机抽象
 
-## 设备基类与离线语义
+`device_base` 以有效反馈 `tick()` 判断离线。失败解码、错误长度和非法数值不能刷新心跳。具有长期任务的驱动使用 construct/connect/start，所有执行器默认禁用。
 
-`device_base` 保存离线超时和最近一次 `tick()` 时间。设备在成功解析有效反馈后调用 `tick()`；超过超时则 `offline()` 返回 true。超时为 0 时离线检测关闭。新设备必须明确：什么报文算有效心跳、初始阶段是否应视为离线、离线时命令输出如何降级。
+`motor_base*` 是稳定实例的非拥有引用。统一读取角度 rad、输出轴速度 rad/s、线速度 m/s；反馈 `torque()` 的历史命名并不保证单位为 Nm，驱动文档明确其含义。`set` 为线速度，`set_angle_speed` 为 rad/s；支持的驱动通过 `set_current` 接受原始控制量，不能当作安培。`supports_current_control`、`faulted`、实际电流上限和输出门显式区分能力与安全状态。
 
-`is_offline(a, b, ...)` 用于组合检查多个具有 `offline()` 的对象。`device` concept 还要求对象是 multiton owner 并提供协程 `task()`；无周期任务的设备可以继承基类的空实现。
+DJI 私有 8 字节解析留在 `.cpp`，没有恢复通用基类协议结构。反馈刷新状态，周期控制任务计算 PID；分组发送读取禁用/失联/限流后的 `current()`。功率层安装的绝对电流上限在最终发送路径使用。型号、减速比、8192 编码器、发送槽及 2 ms 失联阈值仍需真实总线时序验证。
 
-设计理念：IO 成功读到字节不等于设备在线，只有通过协议和长度校验的设备反馈才能刷新心跳。
+J6006 使用厂商确认的 4 字节 float32 rad/s 速度帧、FC/FD 使能/失能及量化反馈；M9025 使用 `0x140+id`、A0 电流帧和独立反馈 codec。两者都已实现阶段化初始化、周期命令与安全门。M9025 的速度缩放必须显式配置；J6006 零速度不代表零力矩，失效路径必须禁用。详见 [电机与超容协议](motor-protocols.md)。
 
-## 电机抽象
+## IMU 与 ControlPad
 
-`motor_base` 统一保存角度（rad）、角速度（rad/s）、扭矩/电流反馈和轮半径，并派生 RPM、线速度。具体电机满足 `device::motor` concept：继承 `motor_base`，作为 multiton owner，并实现 `set()`、`enable()` 和 `task()`。控制目标的精确含义由驱动定义，不能只根据 `set(float)` 猜测单位。
+`serial_imu` 使用串口 key 1、24 字节小端 float32 姿态和角速度。配置独立的姿态/rate 符号与 gyro_scale；有效解码后还检查换算结果有限性，成功才发布完整快照和心跳。迁移配置保留旧 pitch 取负、pitch_rate 不取负及旧数字缩放；上游原始角速度的物理单位仍待确认。
 
-## 电机与 `motor_base`
+`control_pad` 使用 key 2，保留 CH0..CH3、俯仰拨轮、S1/S2 和既有键鼠兼容字段；100 ms 失联由 Robot 处理为 NoForce。此旧桥接协议仍缺少显式版本、校验和，不能把兼容布局视为升级后的抗干扰协议。
 
-控制层使用非拥有型 `motor_base*` 保存电机引用，通过基类虚函数调用 `set/enable/disable`，不分配或销毁电机。具体类型只在初始化绑定时出现一次：
+## Chassis 与 Gimbal
 
-```cpp
-auto* motor = &roboctrl::get<dji_motor>("left_front_motor");
-co_await motor->set(1.0f);
-```
+底盘抽象只接收平面和旋转目标，具体设备负责麦轮运动学、限速和配置轮方向；暴露绑定轮电机供上层功率策略施加输出限制。底盘不读取云台，不依赖 ctrl。
 
-绑定必须发生在对应 multiton 实例初始化之后。指针可复制和放入容器，统一读取角度、角速度、RPM、扭矩、线速度与离线状态；控制层应保证绑定成功后再启动周期任务。
+云台抽象提供姿态目标、相对机械 yaw、在线/初始化状态、回中与使能。工厂拥有多个独立云台实例，兼容主云台 current 接口。DJI/M9025 可使用 IMU 角度/补偿角速度串级电流控制；J6006 是显式固件速度模式。机械零位未标定、反馈非法、失联和故障不能通过回中/发射就绪。详细行为见 [运动迁移](motion-migration.md)。
 
-理念上，`motor_base*` 让 Control 层依赖“电机能力”而不是 DJI 具体模板类型。更换具体驱动时，配置、初始化顺序和单位契约仍需同步检查。
+## 网络应用、裁判与超容
 
-## DJI 生命周期与安全门
+`aim_link`/`navigation_link` 通过共享 UDP 服务收发显式协议；保存本地接收时间，发布过期即失效的物理目标。RemoteLogger 只向外发送观测值，不修改控制状态。见 [网络控制](network-control.md)。
 
-- 构造：验证参数并初始化 PID/输出，输出电流默认为零；当前离线超时保持原实现的 `2ms`。
-- `connect()`：取得 CAN 与电机组，注册反馈回调。
-- `start()`：启动周期任务；电机组单独启动聚合发送任务。
-- 电机默认禁用；禁用或离线时 `current()` 返回零。
-- Robot 进入 `NoForce` 时清空 PID 和电流，非 `NoForce` 状态才显式启用电机。
+`referee` 绑定 raw serial，通过 CRC8/16、长度和增量解析发布独立时间戳状态；UI 图元逐字段编码。设备只提供数据，发射是否允许由 ctrl 决定。见 [裁判/UI](referee.md)。
 
-DJI M2006/M3508 的反馈 ID 为 `0x200 + id`，M6020 为 `0x204 + id`。分组命令根据型号和 ID 落到 `0x200 / 0x1ff / 0x2ff` 的四个 16 位槽；配置预检和运行时注册都会拒绝槽位冲突。反馈把 8192 计数换算为角度，把 RPM 按减速比换算为输出轴角速度，随后速度 PID 更新电流命令。
+`super_cap` 已纳入可选 runtime 配置和 init/connect/start；有效反馈、错误状态、命令看门狗、周期重发和功率限幅均有实现，控制层定期刷新命令。旧协议 energy 是 0..255 索引，未伪装成焦耳。见 [驱动协议](motor-protocols.md) 与 [功率控制](power-control.md)。
 
-`set(speed)` 目前只更新 PID 目标；反馈回调到达时才计算新输出。`dji_motor_group` 每 1 ms 聚合同一 CAN 的当前值，禁用或超时电机自动写零。2 ms 离线阈值与实际总线负载高度相关，调整前必须测量反馈周期与抖动。
+## 当前状态与限制
 
-DJI 反馈仍按固定 8 字节 packed 结构解释，外部协议的端序与字段来源需要进一步写成独立 codec。成熟度：**已接入但仍需硬件验证**。
-
-## M9025
-
-`M9025` 已满足 motor concept，并能注册反馈、更新 PID 与物理量；但 `enable()` 和 `task()` 为空，发送缓冲仍是零初始化后的 TODO，且没有纳入车型配置和阶段化生命周期。不得将其描述为可驱动电机。
-
-成熟度：**接口骨架**。
-
-## Serial IMU
-
-`serial_imu` 在串口 key 1 注册固定 packed 结构，接收 yaw/pitch/roll 及对应角速度。角度由度转换为 rad 并归一化，角速度还除以 1000，表明上游字段按“度/毫秒”解释；每次有效回调调用 `tick()`，离线阈值 100 ms。加速度数组当前没有数据来源。
-
-所有 IMU 实现都通过无参 `angle()`、`gyro()`、`acceleration()` 暴露快照：姿态返回 `euler_angle{roll, pitch, yaw}`，角速度和加速度返回三轴 `{x, y, z}`。带 `axis` 参数的访问器仅为旧调用点保留。
-
-成熟度：入口 **已接入**，但协议无版本、校验和和显式线序，单位约定只体现在实现中。
-
-## ControlPad
-
-`control_pad` 在串口 key 2 注册控制输入。正式抽象只包含 DJI 接收机手册中的 `CH0`～`CH3`、独立的云台俯仰拨轮以及 `S1`/`S2`；通过 `control_channel`、`channel()` 和 `gimbal_pitch_wheel()` 访问。`control_pad_state` 目前仍保留鼠标/键盘字段作为旧协议的兼容存储，控制逻辑不得再依赖这些字段来定义新的设备接口。有效报文刷新心跳，离线阈值为 100 ms。
-
-线协议仍沿用主机端序，且没有版本与校验和；上游发送端必须确认使用同样的 32 位字段布局。成熟度：输入发布与失联监测 **已接入**，线协议健壮性仍是**部分实现**。
-
-## Chassis 与 Gimbal 抽象
-
-`device::chassis_base` 只表达平面速度和旋转速度：可以一次设置 `(x, y, z)`，也可以分别更新平面 `x`、`y` 或旋转分量。其 `info_type` 保存四个轮子电机 key、控制周期和底盘最高旋转速度；麦轮逆运动学位于 `utils::kinematics::inverse_mecanum()`，具体底盘负责电机绑定、PID 和速度下发，不读取云台状态。
-
-`device::gimbal_base` 至少拆分 yaw、pitch 的目标/增量命令；具体云台负责姿态反馈、角度 PID 和电机速度输出。底盘跟随云台、坐标系策略和遥控器映射属于 `ctrl` 的后台控制任务。
-
-当前具体实现分别为 `device::gkd_sentry_chassis` 和 `device::gkd_sentry_gimbal`，声明位于 `device/chassis/gkd_sentry_chassis.hpp`、`device/gimbal/gkd_sentry_gimbal.hpp`。具体类型的注册宏位于各自实现文件，工厂表和 `create/current/init` 实现在 `src/device/chassis/base.cpp`、`src/device/gimbal/base.cpp`；Robot 和控制层只依赖两个 base 类型。
-
-底盘和云台通过 `chassis_registry`、`gimbal_registry` 注册和选择具体实现。实现文件使用 `ROBOCTRL_REGISTER_CHASSIS` / `ROBOCTRL_REGISTER_GIMBAL` 宏：宏展开为静态布尔变量和 lambda，在程序启动的静态初始化阶段完成工厂注册。注册表只保存工厂和当前非拥有型引用，具体实例的生命周期仍由设备实现（当前标准实现使用单例）。
-
-## SuperCap
-
-`super_cap` 是单例设备，通过 CAN ID `0x51` 接收错误码、底盘功率、限制和能量，通过 `0x61` 发送启用位、功率限制与固定字段。状态与发送缓冲均从零初始化，但当前未在 `src/main.cpp` 初始化，也没有调用 `tick()` 形成离线状态。
-
-成熟度：**部分实现、未接入**。
-
-## 修改 Device 时的检查清单
-
-- 配置 key、CAN/串口通道、反馈 ID 和命令槽是否唯一且能预检。
-- 每个反馈字段的宽度、端序、符号、缩放和物理单位是否明确。
-- 只有完整有效的反馈才 `tick()`；离线、禁用、NoForce 时输出必须安全。
-- 构造、`connect()`、`start()` 是否分工清楚且幂等。
-- 控制层是否只依赖抽象状态/命令，没有复制协议解析。
-- 添加纯解析、冲突、空引用和安全门的无硬件测试，并记录仍需台架验证的部分。
+各路径已软件接入；J6006/M9025、裁判和超容没有在本次运行真实硬件。哨兵原始 CAN ID 冲突保留并被预检拒绝，大 yaw 零位未标定。热量预测、弹速闭环、单发节拍不在已验证范围内。所有成熟度与执行证据见 [迁移清单](../migration-gkd-control.md)。

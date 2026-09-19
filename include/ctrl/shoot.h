@@ -27,7 +27,7 @@ public:
 
         utils::ramp_f::params_type friction_params;
         float friction_max_speed {};
-        float trigger_speed {};
+        float trigger_speed {}; // Output shaft rad/s, matching legacy trigger PID feedback.
         float friction_ready_speed {1.5f};
         float jam_current {4000.0f};
         float jam_speed {1.0f};
@@ -36,6 +36,8 @@ public:
         std::string left_friction_motor {"left_friction"};
         std::string right_friction_motor {"right_friction"};
         std::string trigger_motor {"trigger"};
+        bool enforce_referee {false};
+        unsigned int bullet_caliber {17}; // 17 mm normally, 42 mm Hero.
     };
 
     inline std::string desc()const{return "shoot";}
@@ -45,6 +47,15 @@ public:
 
     /** @brief 绑定发射器所需电机并初始化内部状态。 */
     bool init(const info_type& info);
+    bool init(const info_type& info, device::motor_base& left,
+        device::motor_base& right, device::motor_base& trigger);
+    void start();
+    /** One nonblocking control cycle, also usable by hardware-free simulation. */
+    roboctrl::awaitable<void> update();
+    /** Robot owns this gate; only these bound actuators are enabled. */
+    void set_enabled(bool enabled);
+    void set_fire_permitted(bool permitted) { fire_permitted_ = permitted; }
+    [[nodiscard]] bool fire_allowed() const;
 
     /** @brief 请求开始或停止拨弹。 */
     void set_firing(bool state);
@@ -59,6 +70,10 @@ private:
     info_type info_;
     utils::ramp_f friction_ramp_;
 
+    bool enabled_ {false};
+    bool fire_permitted_ {false};
+    bool initialized_ {false};
+    bool started_ {false};
     bool firing_ {false};
     bool friction_enabled_ {false};
     std::chrono::steady_clock::time_point jam_release_at_ {};

@@ -6,6 +6,8 @@
 
 #include <string>
 #include <vector>
+#include <optional>
+#include <memory>
 
 #include "core/async.hpp"
 #include "ctrl/control_mapping.hpp"
@@ -39,6 +41,10 @@ public:
         device::gimbal_base::info_type gimbal_info;
         device::chassis_base::info_type chassis_info;
         shoot::info_type shoot_info;
+        std::optional<device::gimbal_base::info_type> secondary_gimbal_info;
+        std::optional<device::gimbal_base::info_type> large_yaw_info;
+        std::optional<shoot::info_type> secondary_shoot_info;
+        motion_control::info_type motion_info;
         /// 配置选择的具体底盘类；当前仅实现标准麦轮底盘。
         std::string chassis_type {"ctrl.standard_mecanum_chassis.v1"};
         /// 配置选择的具体云台类；当前仅实现标准双轴 IMU 云台。
@@ -63,6 +69,12 @@ public:
     device::gimbal_base* gimbal() noexcept { return gimbal_; }
     const device::gimbal_base* gimbal() const noexcept { return gimbal_; }
 
+    device::gimbal_base* secondary_gimbal() noexcept { return secondary_gimbal_; }
+    device::gimbal_base* large_yaw() noexcept { return large_yaw_; }
+    shoot* secondary_shoot() noexcept { return secondary_shoot_.get(); }
+    bool gimbals_initialized() const;
+    bool gimbals_online() const;
+
     /** @brief 获取当前机器人状态。 */
     robot_state state()const{return state_;}
     /** @brief 设置当前机器人状态并更新输出使能。 */
@@ -75,6 +87,9 @@ private:
     bool enable_shoot_ {false};
     device::chassis_base* chassis_ {nullptr};
     device::gimbal_base* gimbal_ {nullptr};
+    device::gimbal_base* secondary_gimbal_ {nullptr};
+    device::gimbal_base* large_yaw_ {nullptr};
+    std::unique_ptr<shoot> secondary_shoot_;
     std::vector<device::motor_base*> controlled_motors_;
 };
 

@@ -42,23 +42,9 @@ public:
      * @param args 透传给回调的参数
      */
     void operator()(Args... args) const {
-        auto fns = fns_;
-        auto call_args = std::make_tuple(std::move(args)...);
-        roboctrl::spawn(
-            [fns = std::move(fns), call_args = std::move(call_args)]() mutable -> awaitable<void> {
-                for (auto& fn : fns) {
-                    try {
-                        co_await std::apply(fn, call_args);
-                    } catch (const std::exception& error) {
-                        logger::instance().log_error(
-                            "callback failed: {}", error.what());
-                    } catch (...) {
-                        logger::instance().log_error(
-                            "callback failed with an unknown exception");
-                    }
-                }
-            }()
-        );
+        // Coroutine parameters are owned by the frame. A temporary capturing
+        // coroutine lambda would retain a dangling pointer to its closure.
+        roboctrl::spawn(invoke_callbacks(fns_, std::make_tuple(std::move(args)...)));
     }
 
     /**
@@ -81,6 +67,20 @@ public:
     }
 
 private:
+    static awaitable<void> invoke_callbacks(
+        std::vector<std::function<awaitable<void>(Args...)>> fns,
+        std::tuple<std::decay_t<Args>...> call_args) {
+        for (auto& fn : fns) {
+            try {
+                co_await std::apply(fn, call_args);
+            } catch (const std::exception& error) {
+                logger::instance().log_error("callback failed: {}", error.what());
+            } catch (...) {
+                logger::instance().log_error("callback failed with an unknown exception");
+            }
+        }
+    }
+
     std::vector<std::function<awaitable<void>(Args...)>> fns_;
 };
 

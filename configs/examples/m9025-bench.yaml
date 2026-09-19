@@ -1,0 +1,28 @@
+# Software integration example, NOT the sentry's actual J6006 hardware.
+# speed_rad_per_count below is the old RPM-label interpretation (2*pi/60).
+# Confirm firmware units and measured mechanical zero before enabling recenter.
+schema_version: 1
+profile: m9025-bench
+cans:
+  - {name: motor_bus, interface_name: CAN_GIMBAL}
+serials:
+  - {name: bridge, device: /dev/IMU_HERO, baud_rate: 115200}
+dji_motors: []
+m9025_motors:
+  - {name: yaw_m9025, can_name: motor_bus, id: 1, radius: 1.0, encoder_counts_per_turn: 65535.0, speed_rad_per_count: 0.1047197551, pid_params: {kp: 0.0, ki: 0.0, kd: 0.0, max_out: 850.0, max_iout: 0.0}, control_time: {count: 1, unit: milliseconds}}
+control_pad: {name: control_pad, serial_name: bridge}
+imu: {name: imu, serial_name: bridge, pitch_sign: -1.0, gyro_scale: 0.00001745329252}
+robot:
+  enable_chassis: false
+  enable_gimbal: true
+  enable_shoot: false
+  gimbal_type: device.gkd_sentry_gimbal.v1
+  gimbal_info:
+    imu_key: imu
+    yaw_motor_key: yaw_m9025
+    yaw_motor_type: m9025
+    yaw_only: true
+    yaw_current_control: true
+    yaw_zero: 0.0
+    yaw_zero_calibrated: false
+    recenter_on_enable: true
