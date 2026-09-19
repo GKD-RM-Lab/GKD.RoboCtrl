@@ -32,6 +32,7 @@ public:
     void connect();
     void start();
     awaitable<void> task();
+    awaitable<void> stop_output();
     awaitable<void> set(bool enable, uint16_t power_limit);
     bool configured() const { return configured_; }
     float chassis_power() const { return chassis_power_; }

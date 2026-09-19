@@ -53,7 +53,7 @@ void m9025::disable() {
 }
 
 void m9025::set_enabled(bool enabled) {
-    if (enabled) enabled_ = true;
+    if (enabled && !async::shutdown_requested()) enabled_ = true;
     else disable();
 }
 
@@ -70,4 +70,10 @@ awaitable<void> m9025::task() {
         co_await get<io::can>(info_.can_name).send(0x140 + info_.id, data);
         co_await wait_for(info_.control_time);
     }
+}
+
+awaitable<void> m9025::stop_output() {
+    disable();
+    const auto zero = motor_protocol::encode_m9025_current(0);
+    co_await get<io::can>(info_.can_name).send(0x140 + info_.id, zero);
 }

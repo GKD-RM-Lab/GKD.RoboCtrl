@@ -14,7 +14,7 @@ dji_motors:
   - {type_: M3508, id: 1, name: right_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
   - {type_: M3508, id: 2, name: left_rear_motor, can_name: CAN_CHASSIS, radius: 0.075, pid_params: {kp: 15000.0, ki: 5000.0, kd: 0.0, max_out: 14000.0, max_iout: 2000.0}, control_time: {count: 2, unit: milliseconds}}
   - {type_: M6020, id: 3, name: gimbal_yaw_motor, can_name: CAN_GIMBAL, radius: 1.0, pid_params: {kp: 8000.0, ki: 0.0, kd: 0.0, max_out: 20000.0, max_iout: 5000.0}, control_time: {count: 1, unit: milliseconds}}
-  - {type_: M3508, id: 1, name: gimbal_pitch_motor, can_name: CAN_GIMBAL, radius: 0.075, pid_params: {kp: 5500.0, ki: 100000.0, kd: 0.0, max_out: 30000.0, max_iout: 5000.0}, control_time: {count: 1, unit: milliseconds}}
+  - {type_: M3508, id: 1, name: gimbal_pitch_motor, can_name: CAN_GIMBAL, radius: 0.075, pid_params: {kp: 5500.0, ki: 100000.0, kd: 0.0, max_out: 16384.0, max_iout: 5000.0}, control_time: {count: 1, unit: milliseconds}}
   - {type_: M3508, id: 3, name: left_friction, can_name: CAN_GIMBAL, radius: 0.075, pid_params: {kp: 2000.0, ki: 50.0, kd: 0.01, max_out: 16000.0, max_iout: 2000.0}, control_time: {count: 1, unit: milliseconds}}
   - {type_: M3508, id: 2, name: right_friction, can_name: CAN_GIMBAL, radius: 0.075, pid_params: {kp: 2000.0, ki: 50.0, kd: 0.01, max_out: 16000.0, max_iout: 2000.0}, control_time: {count: 1, unit: milliseconds}}
   - {type_: M3508, id: 4, name: trigger, can_name: CAN_GIMBAL, radius: 0.075, pid_params: {kp: 2000.0, ki: 500.0, kd: 0.0, max_out: 10000.0, max_iout: 9000.0}, control_time: {count: 1, unit: milliseconds}}

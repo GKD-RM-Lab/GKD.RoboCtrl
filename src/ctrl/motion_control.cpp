@@ -24,7 +24,10 @@ bool motion_control::init(const info_type& info) {
     if (!info.remote_logger_key.empty()) remote_logger_ = &roboctrl::get<device::remote_logger>(info.remote_logger_key);
     follow_.configure(info.follow_pid, info.follow_direction, info.spin_recenter_speed, info.follow_tolerance);
     auto& pad = roboctrl::get<device::control_pad>(info.control_pad_key);
-    pad.on_update([this](const device::control_pad_state& input) { input_ = input; });
+    pad.on_update([this](const device::control_pad_state& input) {
+        input_ = input;
+        input_pending_ = true;
+    });
     roboctrl::spawn(task());
     return true;
 }
@@ -195,14 +198,28 @@ awaitable<void> motion_control::task() {
     auto debug_at = previous;
     while (true) {
         const auto now = std::chrono::steady_clock::now();
-        const fp32 dt = std::chrono::duration<fp32>(now - previous).count();
+        const auto elapsed = now - previous;
+        const fp32 dt = elapsed > std::chrono::steady_clock::duration::zero() && elapsed <= info_.control_time * 5
+            ? std::chrono::duration<fp32>(elapsed).count() : 0.f;
         previous = now;
-        const auto command = mapper_.update(input_);
         auto& robot = roboctrl::get<ctrl::robot>();
         const bool remote_online = !roboctrl::get<device::control_pad>(info_.control_pad_key).offline();
-        if (command.arm_requested && remote_online && robot.state() == robot_state::NoForce)
-            robot.set_state(gimbal_ ? robot_state::FinishInit : robot_state::FollowGimbal);
-        if (!remote_online) robot.set_state(robot_state::NoForce);
+        bool fresh_input = false;
+        if (!remote_online) {
+            robot.set_state(robot_state::NoForce);
+            mapper_.reset();
+            command_ = {};
+            input_pending_ = false;
+        } else if (input_pending_) {
+            input_pending_ = false;
+            fresh_input = true;
+            command_ = mapper_.update(input_);
+            if (command_.arm_requested && robot.state() == robot_state::NoForce)
+                robot.set_state(gimbal_ ? robot_state::FinishInit : robot_state::FollowGimbal);
+        }
+        auto command = command_;
+        // Mouse deltas are per received packet, unlike the held RC stick.
+        if (mapper_.keyboard_mode() && !fresh_input) command.yaw_delta = command.pitch_delta = 0.f;
         if (robot.state() == robot_state::FinishInit && robot.gimbals_initialized())
             robot.set_state(robot_state::FollowGimbal);
         else if (robot.state() != robot_state::NoForce && robot.state() != robot_state::FinishInit &&

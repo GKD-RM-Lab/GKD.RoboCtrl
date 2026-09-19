@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <array>
 #include <algorithm>
+#include <type_traits>
+#include <utility>
 
 namespace roboctrl::utils
 {
@@ -339,9 +341,9 @@ public:
      * @param
      * @retval the transposed matrix
      */
-    constexpr Matrix<_cols, _rows> trans() const
+    constexpr Matrix<_cols, _rows, T> trans() const
     {
-        Matrix<_cols, _rows> res;
+        Matrix<_cols, _rows, T> res;
         for (int i = 0; i < _rows; i++)
             for (int j = 0; j < _cols; j++)
                 res[j][i] = data[i][j];
@@ -368,7 +370,7 @@ public:
     constexpr T trace() const
     {
         T res = 0;
-        for (int i = 0; i < fmin(_rows, _cols); i++)
+        for (int i = 0; i < std::min(_rows, _cols); i++)
             res += data[i][i];
         return res;
     }
@@ -380,36 +382,56 @@ public:
      */
     constexpr Matrix inv() const
     {
-        Matrix res = Matrix::eye();
         static_assert(_cols == _rows, "Matrix must be square");
+        Matrix res = Matrix::eye();
 
-        // 创建一个临时矩阵用于 LU 分解
         Matrix temp = this->clone();
 
-        // 高斯-约当消元法
+        // Gauss-Jordan elimination with partial pivoting.
         for (int k = 0; k < _cols; k++)
         {
-            // 检查主元是否为 0
-            if (temp[k][k] == 0.0f)
+            int pivot_row = k;
+            auto magnitude = [](T value) constexpr {
+                const auto converted = static_cast<long double>(value);
+                return converted < 0.0L ? -converted : converted;
+            };
+            auto pivot_magnitude = magnitude(temp[k][k]);
+            for (int i = k + 1; i < _rows; i++)
+            {
+                const auto candidate_magnitude = magnitude(temp[i][k]);
+                if (candidate_magnitude > pivot_magnitude)
+                {
+                    pivot_row = i;
+                    pivot_magnitude = candidate_magnitude;
+                }
+            }
+
+            // Preserve the historical singular-matrix contract: return zeros
+            // when no non-zero pivot exists for the current column.
+            if (pivot_magnitude == 0.0L)
             {
                 return zeros();
             }
 
-            // 归一化当前行
+            if (pivot_row != k)
+            {
+                std::swap(temp[pivot_row], temp[k]);
+                std::swap(res[pivot_row], res[k]);
+            }
+
             T pivot = temp[k][k];
-            for (int j = 0; j < _rows; j++)
+            for (int j = 0; j < _cols; j++)
             {
                 temp[k][j] /= pivot;
                 res[k][j] /= pivot;
             }
 
-            // 消去其他行的当前列
             for (int i = 0; i < _rows; i++)
             {
                 if (i != k)
                 {
                     T factor = temp[i][k];
-                    for (int j = 0; j < _rows; j++)
+                    for (int j = 0; j < _cols; j++)
                     {
                         temp[i][j] -= factor * temp[k][j];
                         res[i][j] -= factor * res[k][j];
@@ -468,7 +490,7 @@ public:
      * @param vec The diagnoal entries
      * @retval The diagnoanl matrix
      */
-    static constexpr Matrix diag(Matrix<_rows, 1> vec)
+    static constexpr Matrix diag(const Matrix<_rows, 1, T> &vec)
     {
         Matrix res = Matrix::zeros();
         for (int i = 0; i < std::min(_rows, _cols); i++)

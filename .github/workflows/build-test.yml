@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -26,7 +27,7 @@ jobs:
       - name: Set up Xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: latest
+          xmake-version: '3.1.1'
 
       - name: Configure
         run: xmake f -y -m ${{ matrix.mode }}
@@ -37,5 +38,5 @@ jobs:
       - name: Build unit tests
         run: xmake build -y unit-tests
 
-      - name: Run unit tests
+      - name: Run unit tests with always-on checks (${{ matrix.mode }})
         run: xmake run unit-tests

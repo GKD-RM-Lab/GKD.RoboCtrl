@@ -43,10 +43,13 @@ public:
 
         control_command command;
         const auto pitch_wheel = input.gimbal_pitch_wheel();
-        if (input.s1 == s_down && input.s2 == s_down && pitch_wheel == roll_up) {
+        const bool unlock_gesture =
+            input.s1 == s_down && input.s2 == s_down && pitch_wheel == roll_up;
+        if (unlock_gesture && !unlock_gesture_last_) {
             armed_ = true;
             command.arm_requested = true;
         }
+        unlock_gesture_last_ = unlock_gesture;
 
         if (input.key != 0) {
             keyboard_mode_ = true;
@@ -102,8 +105,12 @@ public:
 
     /** @brief 返回是否已完成解锁手势。 */
     [[nodiscard]] bool armed() const noexcept { return armed_; }
+    [[nodiscard]] bool keyboard_mode() const noexcept { return keyboard_mode_; }
 
-    /** @brief 清除解锁、按键边沿和摩擦轮状态。 */
+    /**
+     * @brief 清除解锁、按键边沿和摩擦轮状态。
+     * @details 保留解锁手势电平，避免失联后仍保持手势的首帧被误判为新边沿。
+     */
     void reset() noexcept {
         armed_ = false;
         keyboard_mode_ = false;
@@ -120,6 +127,7 @@ private:
     bool friction_enabled_ {false};
     bool rotate_pressed_last_ {false};
     bool friction_pressed_last_ {false};
+    bool unlock_gesture_last_ {false};
 };
 
 } // namespace roboctrl::ctrl

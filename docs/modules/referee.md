@@ -78,7 +78,7 @@ CRC8 使用反射多项式 `0x8c`、初值 `0xff`；CRC16 使用 `0x8408`、初�
 ## 发射控制与许可
 
 `shoot` 保留默认单例，也支持 Robot 持有独立第二实例。`init(info)` 绑定三台电机；
-`start()` 幂等启动协程；`update()` 是同一实现的一次协程迭代，可由模拟器直接调用。
+`start()` 幂等启动协程；`update(dt)` 是同一实现的一次协程迭代，可由模拟器直接调用。实际任务使用测量的 elapsed dt，首次和超过五个控制周期的间隔不推进斜坡。
 重载 `init(info, left, right, trigger)` 接受 `motor_base&`，供设备绑定或无硬件模拟使用。
 
 Robot 通过 `set_enabled(false)` 关闭实际绑定的三台执行器，并立即清空开火/摩擦轮/外部许可、斜坡与
@@ -109,7 +109,7 @@ PID 参数仍需按秒制 dt 和硬件反馈重新标定。
 `tests/referee_protocol_tests.cpp` 使用从旧查表代码独立计算的 CRC/整帧 golden vector，覆盖所有拆包点、
 坏 CRC/超长帧/噪声重同步、独立新鲜度、弹种字段、非法长度/浮点数、UI 位域/客户端映射、
 身份晚到/过期恢复/身份切换时的首次新增，以及周期重建。
-`tests/shoot_integration_tests.cpp` 用假电机执行真实 `shoot::update()` 协程，检查实际下发目标与角/线速度
+`tests/shoot_integration_tests.cpp` 用假电机执行真实 `shoot::update(dt)` 协程，检查实际下发目标与角/线速度
 接口、精确正阈值/静止/非法阈值、禁用/许可/离线零输出、负电流堵转、NaN/Inf、双实例隔离、Hero 弹种、比赛阶段、HP 与电源门。
 协议和发射测试均用直接 clang++ 编译运行通过；没有运行主程序、打开总线或进行上机测试。
 

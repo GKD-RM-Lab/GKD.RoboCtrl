@@ -20,7 +20,7 @@
 
 持续时间格式 `{count: 1, unit: milliseconds}`；DJI 枚举名为 M2006/M3508/M6020；视觉格式 `legacy_14` 或明确选用 `compact_10`。未知字段失败，可选组件默认缺省。电机 ID、半径、DJI 类型/周期和串口波特率缺失时初始化为无效零值，由预检拒绝，避免读取未初始化数值。
 
-硬件打开前校验 key、物理 CAN/串口别名、串口 raw/keyed 模式、反馈/命令槽、跨驱动 CAN 冲突、驱动能力、控制对象唯一所有权、IMU 引用、协议 header/端点、有效超时、所有相关方向/有限数/PID、裁判发射依赖和功率配置。J6006 允许同一 master ID 下不同控制器复用反馈，禁止同总线重复控制器 ID。
+硬件打开前校验 key、物理 CAN/串口别名、串口 raw/keyed 模式、反馈/命令槽、跨驱动 CAN 冲突、驱动能力、控制对象唯一所有权、IMU 引用、协议 header/端点、有效超时、所有相关方向/有限数/PID（含 DJI 型号电流上限）、裁判发射依赖和功率配置。J6006 允许同一 master ID 下不同控制器复用反馈，禁止同总线重复控制器 ID。
 
 `yaw_zero` 单位 rad，`yaw_zero_calibrated` 决定可否机械回中，未标定不能宣告 FinishInit 完成。`yaw_angle_direction` 与 `yaw_recenter_direction` 分别保留旧绝对/相对外环符号；输出方向另行配置。IMU 姿态和 rate 各轴符号独立，迁移值保留 pitch 取负。轮方向 LF/RF/LR/RR 明确 `[-1,1,-1,1]`。摩擦轮 m/s、拨弹 rad/s。
 

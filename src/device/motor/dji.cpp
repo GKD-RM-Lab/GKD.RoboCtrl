@@ -1,6 +1,9 @@
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <sys/types.h>
 
@@ -105,7 +108,7 @@ std::pair<uint16_t, uint16_t> dji_motor::can_pkg_id() const {
     case M6020:
         if (info_.id >= 1 && info_.id <= 4)
             return {0x1ff, static_cast<uint16_t>(info_.id - 1)};
-        else if (info_.id >= 5 && info_.id <= 8)
+        else if (info_.id >= 5 && info_.id <= 7)
             return {0x2ff, static_cast<uint16_t>(info_.id - 5)};
         else {
             log_error("invalid gm6020 id: {}", info_.id);
@@ -143,12 +146,16 @@ roboctrl::awaitable<void> dji_motor_group::send_command(uint16_t can_id_) {
 
 roboctrl::awaitable<void> dji_motor_group::task(){
     while(true){
-        co_await send_command(0x1ff);
-        co_await send_command(0x200);
-        co_await send_command(0x2ff);
+        co_await flush_commands_once();
 
         co_await wait_for(1ms);
     }
+}
+
+roboctrl::awaitable<void> dji_motor_group::flush_commands_once(){
+    co_await send_command(0x1ff);
+    co_await send_command(0x200);
+    co_await send_command(0x2ff);
 }
 
 dji_motor::dji_motor(dji_motor::info_type info)
@@ -162,14 +169,17 @@ dji_motor::dji_motor(dji_motor::info_type info)
     if (info.can_name.empty()) {
         throw std::invalid_argument(std::format("DJI motor {} has no CAN dependency", info.name));
     }
-    if (info.id < 1 || info.id > 8) {
-        throw std::invalid_argument(std::format("DJI motor {} has invalid id {}", info.name, info.id));
-    }
-    if (info.radius <= 0.0f) {
+    if (!std::isfinite(info.radius) || info.radius <= 0.0f) {
         throw std::invalid_argument(std::format("DJI motor {} has invalid radius", info.name));
     }
     if (info.control_time <= std::chrono::steady_clock::duration::zero()) {
         throw std::invalid_argument(std::format("DJI motor {} has invalid control period", info.name));
+    }
+    const auto& pid = info.pid_params;
+    if (!std::isfinite(pid.kp) || !std::isfinite(pid.ki) || !std::isfinite(pid.kd) ||
+        !std::isfinite(pid.max_out) || !std::isfinite(pid.max_iout) ||
+        pid.max_out < 0.0f || pid.max_iout < 0.0f) {
+        throw std::invalid_argument(std::format("DJI motor {} has invalid PID parameters", info.name));
     }
 
     switch(info_.type_){
@@ -186,6 +196,18 @@ dji_motor::dji_motor(dji_motor::info_type info)
             throw std::invalid_argument(std::format(
                 "DJI motor {} has unsupported type {}", info.name,
                 static_cast<int>(info.type_)));
+    }
+
+    if (info.id < 1 || info.id > max_device_id(info.type_)) {
+        throw std::invalid_argument(std::format(
+            "DJI motor {} has invalid id {} for type {}",
+            info.name, info.id, __motor_tyep_to_string(info.type_)));
+    }
+    const auto current_limit = command_current_limit(info.type_);
+    if (pid.max_out > current_limit || pid.max_iout > current_limit) {
+        throw std::invalid_argument(std::format(
+            "DJI motor {} PID limit exceeds {} command range",
+            info.name, __motor_tyep_to_string(info.type_)));
     }
 
     log_debug("Dji \"{}\" motor {} created on can \"{}\" with pid(p={},i={},d={},max iout={},max out={})",
@@ -221,6 +243,10 @@ void dji_motor::connect() {
         case dji_motor::M6020:
             fallback_canid = 0x204 + info_.id;
             break;
+        default:
+            throw std::invalid_argument(std::format(
+                "DJI motor {} has unsupported type {}", info_.name,
+                static_cast<int>(info_.type_)));
     }
 
     can.on_data(fallback_canid, [this](io::byte_span data) {
@@ -251,12 +277,24 @@ void dji_motor::start() {
 
 void dji_motor::disable() {
     enabled_ = false;
+    target_fresh_since_enable_ = false;
     current_ = 0;
     pid_.clean();
+    last_control_at_ = {};
 }
 
 void dji_motor::set_enabled(bool enabled) {
     if (enabled) {
+        if (roboctrl::async::shutdown_requested()) {
+            disable();
+            return;
+        }
+        if (!enabled_) {
+            current_ = 0;
+            target_fresh_since_enable_ = false;
+            pid_.clean();
+            last_control_at_ = {};
+        }
         enabled_ = true;
     } else {
         disable();
@@ -266,7 +304,9 @@ void dji_motor::set_enabled(bool enabled) {
 roboctrl::awaitable<void> dji_motor::set(fp32 speed){ 
     if (mode_ != control_mode::linear) pid_.clean();
     mode_ = control_mode::linear;
-    pid_.set_target(enabled_ && std::isfinite(speed) ? speed : 0.f);
+    target_fresh_since_enable_ = enabled_ && std::isfinite(speed);
+    if (!target_fresh_since_enable_) { current_ = 0; pid_.clean(); }
+    pid_.set_target(target_fresh_since_enable_ ? speed : 0.f);
 
     log_debug("target set to :{}",speed);
 
@@ -276,25 +316,39 @@ roboctrl::awaitable<void> dji_motor::set(fp32 speed){
 roboctrl::awaitable<void> dji_motor::set_angle_speed(fp32 speed) {
     if (mode_ != control_mode::angular) pid_.clean();
     mode_ = control_mode::angular;
-    pid_.set_target(enabled_ && std::isfinite(speed) ? speed : 0.f);
+    target_fresh_since_enable_ = enabled_ && std::isfinite(speed);
+    if (!target_fresh_since_enable_) { current_ = 0; pid_.clean(); }
+    pid_.set_target(target_fresh_since_enable_ ? speed : 0.f);
     co_return;
 }
 
 roboctrl::awaitable<void> dji_motor::set_current(fp32 command) {
     if (mode_ != control_mode::current) pid_.clean();
     mode_ = control_mode::current;
-    current_ = enabled_ && !offline() && std::isfinite(command)
+    target_fresh_since_enable_ = enabled_ && std::isfinite(command);
+    current_ = target_fresh_since_enable_ && !offline()
         ? std::clamp(command, -max_current(), max_current()) : 0.f;
     co_return;
 }
 
 roboctrl::awaitable<void> dji_motor::task(){
     while(true){
-        if (!enabled_ || offline()) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed = now - last_control_at_;
+        const bool valid_elapsed = last_control_at_ != std::chrono::steady_clock::time_point{} &&
+            elapsed > std::chrono::steady_clock::duration::zero() && elapsed <= info_.control_time * 5;
+        last_control_at_ = now;
+        if (!enabled_ || !target_fresh_since_enable_ || offline()) {
             current_ = 0.f;
+            target_fresh_since_enable_ = false;
             pid_.clean();
         } else if (mode_ != control_mode::current) {
-            const fp32 dt = std::chrono::duration<fp32>(info_.control_time).count();
+            const fp32 dt = valid_elapsed ? std::chrono::duration<fp32>(elapsed).count() : 0.f;
+            if (!valid_elapsed) {
+                const auto target = pid_.target();
+                pid_.clean();
+                pid_.set_target(target);
+            }
             pid_.update(mode_ == control_mode::linear ? linear_speed() : angle_speed(), dt);
             current_ = std::clamp(pid_.state(), -max_current(), max_current());
         }

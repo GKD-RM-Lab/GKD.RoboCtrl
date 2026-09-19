@@ -8,10 +8,11 @@ Core 提供所有上层模块共享的运行时基础：单线程异步上下文
 
 `task_context` 是 `asio::io_context` 的单例包装，主要接口包括：
 
-- `spawn(awaitable<void>)`：通过 `asio::co_spawn` 注册协程，未捕获异常会记录并停止事件循环。
+- `spawn(awaitable<void>)`：通过 `asio::co_spawn` 注册协程；未捕获异常统一进入一次性安全停机流程。
 - `callback`：回调内部会逐个隔离并记录异常；只有越过任务边界的未捕获异常才会触发上述事件循环停止策略。
-- `post(fn, args...)`：把普通可调用对象放入事件队列。
-- `run()` / `stop()`：启动或停止全局事件循环。
+- `post(fn, args...)`：把普通可调用对象放入事件队列；异常与协程异常走同一流程，不会越过 `run()` 导致进程直接终止。
+- `run()` / `stop()`：启动事件循环或请求一次性安全停机；`stop()` 与 `request_shutdown()` 共用停机流程。
+- `set_shutdown_handler()` / `request_shutdown()` / `shutdown_requested()` / `failed()`：注册、请求和查询上层一次性安全停机任务；入口可区分致命异步错误与正常停止。
 - `wait_for(duration)`：使用 `steady_timer` 挂起当前协程。
 - `yield()`：把执行权交回调度器。
 - `executor()` / `io_context()`：供 IO 对象绑定 Asio executor。
@@ -21,7 +22,8 @@ Core 提供所有上层模块共享的运行时基础：单线程异步上下文
 - 周期循环必须包含可挂起操作，且频率/单位要可解释。
 - 不要在其他模块创建私有 `io_context` 或后台线程，除非先形成明确的跨线程所有权与同步设计。
 - 构造阶段调用 `spawn` 只会登记任务；任务在 `async::run()` 后才开始执行。
-- completion handler 统一收集任务边界异常；模块内部仍应为可恢复错误提供明确状态和上下文。
+- completion handler、`post` 包装器和 `run()` 统一收集任务边界异常；模块内部仍应为可恢复错误提供明确状态和上下文。
+- 致命异常和 `SIGINT` / `SIGTERM` 都只触发同一个一次性 shutdown handler。Core 不依赖控制层；停机请求会先锁存 `shutdown_requested()`，使控制层和各电机驱动拒绝重新使能。主入口注册的 handler 再把 Robot 切到 `NoForce`，对每个 DJI 分组显式排入一次当前零电流快照，并补发 J6006/M9025/超容的关闭输出，并保留 20 ms 的有界发送窗口，handler 完成后才停止事件循环。致命异常返回 1，信号退出返回 `128 + signal`。未注册 handler 的通用程序会立即停止，带执行器的入口必须在 `run()` 前注册。若总线或 writer 已经失效，软件无法保证零帧到达执行器，实车仍必须依赖电机/总线超时和外部急停。
 
 成熟度：**已接入**。CAN、串口、网络、电机和控制循环都依赖它。
 

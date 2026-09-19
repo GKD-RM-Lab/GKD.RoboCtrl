@@ -53,6 +53,7 @@ public:
     void disable() override;
     void set_enabled(bool enabled) override;
     awaitable<void> task();
+    awaitable<void> stop_output();
     bool supports_current_control() const override { return true; }
     fp32 requested_current() const override { return enabled_ && !offline() ? current_ : 0.f; }
     fp32 max_current() const override { return std::min(info_.pid_params.max_out, 32767.f); }

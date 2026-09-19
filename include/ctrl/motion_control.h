@@ -44,6 +44,7 @@ private:
     awaitable<void> send_debug_telemetry();
     info_type info_;
     device::control_pad_state input_ {};
+    control_command command_ {};
     device::chassis_base* chassis_ {nullptr};
     device::gimbal_base* gimbal_ {nullptr};
     device::gimbal_base* secondary_gimbal_ {nullptr};
@@ -56,6 +57,7 @@ private:
     chassis_follow follow_;
     fp32 search_elapsed_ {};
     bool auto_aim_last_ {false};
+    bool input_pending_ {false};
 };
 static_assert(utils::singleton<motion_control>);
 }

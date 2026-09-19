@@ -51,7 +51,7 @@ public:
         device::motor_base& right, device::motor_base& trigger);
     void start();
     /** One nonblocking control cycle, also usable by hardware-free simulation. */
-    roboctrl::awaitable<void> update();
+    roboctrl::awaitable<void> update(fp32 dt);
     /** Robot owns this gate; only these bound actuators are enabled. */
     void set_enabled(bool enabled);
     void set_fire_permitted(bool permitted) { fire_permitted_ = permitted; }

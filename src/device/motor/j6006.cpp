@@ -48,7 +48,7 @@ void j6006::disable() {
 }
 
 void j6006::set_enabled(bool enabled) {
-    if (enabled) enabled_ = true;
+    if (enabled && !async::shutdown_requested()) enabled_ = true;
     else disable();
 }
 
@@ -72,4 +72,12 @@ awaitable<void> j6006::task() {
         co_await get<io::can>(info_.can_name).send(0x200 + info_.id, data);
         co_await wait_for(info_.control_time);
     }
+}
+
+awaitable<void> j6006::stop_output() {
+    disable();
+    const auto disabled = motor_protocol::encode_j6006_enabled(false);
+    const auto zero = motor_protocol::encode_j6006_velocity(0.f);
+    co_await get<io::can>(info_.can_name).send(0x200 + info_.id, disabled);
+    co_await get<io::can>(info_.can_name).send(0x200 + info_.id, zero);
 }

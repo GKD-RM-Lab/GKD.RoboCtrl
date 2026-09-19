@@ -43,6 +43,7 @@ public:
     void disable() override;
     void set_enabled(bool enabled) override;
     awaitable<void> task();
+    awaitable<void> stop_output();
     fp32 target_angle_speed() const override { return target_speed_; }
     uint16_t encoder_raw() const { return encoder_raw_; }
     uint8_t status() const { return status_; }

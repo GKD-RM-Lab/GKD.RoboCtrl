@@ -21,6 +21,7 @@ void gkd_sentry_gimbal::hold() {
 }
 
 void gkd_sentry_gimbal::set_enabled(bool enabled) {
+    enabled = enabled && !async::shutdown_requested();
     if (enabled_ != enabled) {
         reset_controllers();
         settle_.reset();
@@ -46,6 +47,11 @@ void gkd_sentry_gimbal::set_recentering(bool enabled) {
 }
 
 roboctrl::awaitable<void> gkd_sentry_gimbal::update(fp32 dt) {
+    if (!std::isfinite(dt) || dt <= 0 || dt > std::chrono::duration<fp32>(info_.control_time * 5).count()) {
+        reset_controllers();
+        settle_.reset();
+        dt = 0;
+    }
     if (yaw_motor_->faulted() || (pitch_motor_ && pitch_motor_->faulted()))
         drive_fault_latched_ = true;
     const auto angle = imu_->angle();

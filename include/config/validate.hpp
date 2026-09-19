@@ -117,10 +117,10 @@ inline void validate_configuration(
     };
     for (const auto& motor : motors) {
         add_motor(motor, "dji");
-        require(motor.id >= 1 && motor.id <= 8 &&
+        require(motor.id >= 1 && motor.id <= device::dji_motor::max_device_id(motor.type_) &&
                 (motor.type_ == device::dji_motor::M2006 || motor.type_ == device::dji_motor::M3508 ||
                  motor.type_ == device::dji_motor::M6020), "invalid DJI model/id");
-        require(valid_pid(motor.pid_params, 32767), "invalid DJI PID");
+        require(valid_pid(motor.pid_params, device::dji_motor::command_current_limit(motor.type_)), "invalid DJI PID");
         const bool gimbal = motor.type_ == device::dji_motor::M6020;
         rx(motor.can_name, (gimbal ? 0x204 : 0x200) + motor.id);
         const unsigned command = gimbal ? (motor.id <= 4 ? 0x1ff : 0x2ff) :

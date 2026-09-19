@@ -18,6 +18,10 @@ namespace roboctrl::io{
 
 using can_id_type = uint32_t;
 
+inline constexpr uint64_t can_write_key(can_id_type id, size_t payload_size) {
+    return uint64_t{id} | (uint64_t{payload_size} << 32);
+}
+
 /**
  * @brief CAN 设备对象，支持根据 ID 分发回调。
  */
@@ -52,6 +56,7 @@ public:
 
     /**
      * @brief 发送带 CAN ID 的帧。
+     * @details 同一 ID 和 DLC 尚未写出的帧只保留最新值；正在写出的帧无法撤回。
      */
     awaitable<void> send(can_id_type id,byte_span data);
 

@@ -2,7 +2,7 @@
 
 来源 `/Users/junity/code/GKD_Control` 只读；目标是本独立工作树。既有用户变更先完整带入，摘要与 SHA256 见 [`migration-baseline.json`](migration-baseline.json)：DJI/M9025 私有解析、通用 motor_base 去协议结构、三参数 PID、shoot 私有辅助函数、相关测试/文档均保留语义；未恢复删除的 `shoot_logic.hpp`。后续驱动修正是本次新增。
 
-迁移期间原目录又出现并行修改；本工作树没有覆盖它们，仍以开工快照为基线。后续合并必须协调这些新增差异，记录见 [`migration-upstream-drift.json`](migration-upstream-drift.json)。
+迁移期间原目录出现的并行修改随后提交为 `e6a71f4`；按用户要求在迁移分支合并该主分支提交，逐项整合异步生命周期、停机、解锁边沿、型号电流上限与数值工具修复。观察时的差异快照见 [`migration-upstream-drift.json`](migration-upstream-drift.json)。
 
 原文将底盘跟随、回中和相对 yaw 同步提前写成“已迁移”，与起始源码不符。本次实际新增这些路径。下面“接入”表示代码、配置入口和调用链存在，不表示 Linux 构建、台架或实车已经通过。
 
@@ -28,7 +28,7 @@
 - 底盘由云台坐标到车体：`vx'=cos(yaw)vx+sin(yaw)vy`、`vy'=-sin(yaw)vx+cos(yaw)vy`。轮序统一 LF/RF/LR/RR；各 YAML 显式 `[-1,1,-1,1]` 恢复旧最终电机目标整体符号。旋转输入仍是轮速合成量，没有虚构底盘几何半径，不能声称其为已标定车体 rad/s。
 - 旧 IMU pitch 取负、pitch_rate 不取负；迁移配置明确 `pitch_sign: -1` 和独立 rate_sign。旧角速度换算 `pi/180/1000` 显式保留为 gyro_scale，上游字段物理单位仍需实测，未把它猜成正确 SI 来源。
 - 摩擦轮 m/s，拨弹 `trigger_speed` 为输出轴 rad/s，分别用 `set` 与 `set_angle_speed`。Hero 的 1.5 m/s 就绪边界改为包含等号，防止恰好达到目标时永不允许发射；就绪阈值必须为正且不大于目标。
-- 旧 PID `I+=ki*e`、`D=kd*delta_e`。在原采样周期 `dt0` 下迁移为 `ki_new=ki_old/dt0`、`kd_new=kd_old*dt0`，kp/输出限幅不变。底盘取 2 ms，云台/发射取 1 ms；配置使用换算结果，不机械复用旧数值。该换算只保证固定原周期代数等价，不保证变周期或真实硬件稳定。
+- 旧 PID `I+=ki*e`、`D=kd*delta_e`。在原采样周期 `dt0` 下迁移为 `ki_new=ki_old/dt0`、`kd_new=kd_old*dt0`，kp 不变；Hero M3508 俯仰的旧 30000 输出限幅按主分支安全修复收紧至型号允许的 16384。底盘取 2 ms，云台/发射取 1 ms；配置使用换算结果，不机械复用旧数值。该换算只保证固定原周期代数等价，不保证变周期或真实硬件稳定。
 - 小头 DJI 零位按源码编码器值 `2*pi/8192` 转成 rad。J6006 是 `[-position_max,+position_max]` 的 16 位量化位置，旧哨兵沿用 M9025 convenience ecd 公式，无法据此确认机械零位，因此显式 `yaw_zero_calibrated: false`，不虚构标定。
 - J6006 厂商协议核对修正旧 DLC：速度命令为 4 字节 float32 小端，并补齐 FC/FD 使能/失能。M9025 速度单位来源矛盾，必须显式填写 `speed_rad_per_count`；示例按旧 RPM 标签解释，不能当作固件确认。
 
@@ -44,4 +44,4 @@
 
 用户要求不执行 xmake 后已停止配置过程，后续未执行任何 xmake 命令。直接 Clang 编译的无硬件 aggregate 单测与分项协议/模拟测试通过；主程序只做可行的语法检查，不链接/运行。完整 Linux 目标构建、CAN/串口台架、实车均未执行。
 
-本次没有运行 `gkd-roboctrl` 或 `start.sh`，没有操作真实硬件，没有合并或推送。图表 HTML 的 JS 静态检查通过，浏览器运行时未验证；ASan 在本环境挂起，未计为通过，网络 UBSan 测试通过。最终执行证据见 [`migration-verification.md`](migration-verification.md)。
+本次没有运行 `gkd-roboctrl` 或 `start.sh`，没有操作真实硬件。用户随后授权提交、合并到主分支并移除工作树；不推送远端。图表 HTML 的 JS 静态检查通过，浏览器运行时未验证；ASan 在本环境挂起，未计为通过，网络 UBSan 测试通过。最终执行证据见 [`migration-verification.md`](migration-verification.md)。

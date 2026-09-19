@@ -5,7 +5,7 @@ set_languages("c++23")
 add_cxxflags("-stdlib=libc++","-fexceptions","-frtti")
 add_ldflags("-stdlib=libc++", "-lc++", "-lc++abi")
 add_syslinks("pthread")
-add_requires("asio", "cxxopts")
+add_requires("asio 1.36.0", "cxxopts v3.3.1")
 add_requires("reflect-cpp v0.25.0", {configs = {yaml = true}})
 
 target("gkd-roboctrl")

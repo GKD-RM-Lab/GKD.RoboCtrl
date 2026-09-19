@@ -6,8 +6,6 @@
 #include <format>
 #include <iomanip>
 #include <iostream>
-#include <format>
-#include <print>
 #include <sstream>
 #include <utility>
 
@@ -77,8 +75,9 @@ void roboctrl::logger::log_impl(log_level level, std::string_view role, std::str
                           level_to_string(level),_role_color, role_view,level_to_color(level), message,_reset_color);
     
 
-    if(level >= log_level::Warn || output.contains(filter_))
-        std::println("{}",output);
+    if(level >= log_level::Warn || output.contains(filter_)) {
+        stream << output << '\n';
+    }
 }
 
 std::string_view roboctrl::logger::level_to_string(log_level level) {

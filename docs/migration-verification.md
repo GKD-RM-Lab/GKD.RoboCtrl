@@ -16,7 +16,7 @@
 | C++ 语法检查 | **PASS**；`src/` 中除 `src/io/can.cpp` 外的全部 27 个翻译单元，包括 main.cpp；不等于链接通过 |
 | 文档/差异 | 相对 Markdown 链接、文档覆盖、`git diff --check` 已检查；旧源 J6006 两文件及 gimbal_sentry.hpp SHA 与开工快照相同 |
 
-期望负例会打印 `unsupported current control mode` 日志，但测试返回 0；不把该预期日志当作运行失败。
+期望负例会打印 `unsupported current control mode`、注入 writer 错误和注入异步异常日志，但测试返回 0；不把该预期日志当作运行失败。
 
 ## 直接测试复现
 
@@ -40,4 +40,10 @@ python3 -B tools/run_software_tests.py \
 - ASan 进程在环境中无输出挂起后被中止，不能报告 ASan 通过；这不替代一次可用环境下的内存检查。
 - HTML 浏览器打开超时，未验证视觉渲染与交互。
 - 哨兵 CAN 映射、J6006 机械零位、M9025 固件单位、IMU上游单位/方向、PID、功率模型、实际网络对端、裁判版本仍需硬件/部署核实。
-- 原目录迁移期间有额外并行修改，未合并也未覆盖；[开工基线](migration-baseline.json) 与 [后续差异快照](migration-upstream-drift.json) 用于协调后续合并。没有自动提交、合并或推送。
+- 原目录并行修改已提交为 `e6a71f4`，在用户授权后与迁移提交整合。[开工基线](migration-baseline.json) 与 [后续差异快照](migration-upstream-drift.json) 保留历史来源。未推送远端。
+
+## 与主分支安全修复整合
+
+迁移提交 `cf2c037` 与主分支 `e6a71f4` 合并，保留异步回调/typed IO/写队列所有权、异常停机、遥控校验和重新解锁边沿、DJI 型号电流上限、Matrix/RLS 修复。停机零输出覆盖扩展到 J6006/M9025/超容；CAN 队列按 ID+DLC 合并，避免 J6006 的 DLC4 速度覆盖 DLC8 使能命令。无硬件队列测试覆盖积压时保留两类帧且失能替换旧使能；SocketCAN 实现仍因平台限制未编译。
+
+合并后的 aggregate/Python 测试、localhost UDP/UBSan、27 个可检查翻译单元语法检查、81 个相对文档链接与 `git diff --check` 均重新执行并通过。没有执行 xmake。

@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-xmake run gkd-roboctrl $@
+exec xmake run gkd-roboctrl "$@"

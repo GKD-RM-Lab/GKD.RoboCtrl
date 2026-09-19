@@ -12,7 +12,11 @@
 
 #pragma once
 #include <chrono>
+#include <exception>
 #include <format>
+#include <functional>
+#include <string_view>
+#include <tuple>
 #include <utility>
 #include <asio.hpp>
 #include <asio/awaitable.hpp>
@@ -52,6 +56,7 @@ class task_context :
  public utils::singleton_base<task_context>,public logable<task_context>{
 public:
     using task_type = awaitable<>;
+    using shutdown_handler_type = std::function<task_type()>;
 
     /// @internal
     struct info_type{
@@ -95,18 +100,46 @@ public:
     template<typename Fn, typename... Args>
     inline void post(Fn&& fn, Args&&... args) {
         asio::post(context_,
-            [fn = std::forward<Fn>(fn),
+            [this, fn = std::forward<Fn>(fn),
             args = std::make_tuple(std::decay_t<Args>(std::forward<Args>(args))...)]() mutable {
-                return std::apply(std::move(fn), std::move(args));
+                try {
+                    std::apply(std::move(fn), std::move(args));
+                } catch (...) {
+                    handle_unhandled_exception(
+                        std::current_exception(), "posted task");
+                }
             });
     }
 
     /**
+     * @brief 注册异常或外部请求共用的一次性安全停机任务。
+     *
+     * 首个越过 spawn/post/run 边界的异常会启动该任务。事件循环会继续
+     * 运行，直到任务完成后才停止，从而允许上层先撤销执行器使能并等待
+     * 有界的零输出刷新窗口。停机任务自身不得无限等待。
+     */
+    void set_shutdown_handler(shutdown_handler_type handler);
+
+    /**
+     * @brief 请求一次安全停机。
+     *
+     * 首次请求会运行已注册的停机任务，待其完成后停止事件循环。重复请求
+     * 不会重复运行停机任务。
+     */
+    void request_shutdown() noexcept;
+
+    /**
      * @brief 开始运行任务上下文。
      */
-    void run();
+    void run() noexcept;
 
     void stop();
+
+    /** @brief 是否观察到过未处理的异步异常。 */
+    bool failed() const noexcept { return failed_; }
+
+    /** @brief 是否已经进入一次性停机流程。 */
+    bool shutdown_requested() const noexcept { return shutdown_started_; }
 
     /// @brief 初始化 task_context
     bool init(info_type _info);
@@ -131,8 +164,15 @@ public:
     }
     
 private:
+    void handle_unhandled_exception(std::exception_ptr error,
+                                    std::string_view origin) noexcept;
+    void finish_shutdown(std::exception_ptr error) noexcept;
+
     asio::io_context context_;
     info_type info_;
+    shutdown_handler_type shutdown_handler_;
+    bool failed_ {false};
+    bool shutdown_started_ {false};
 };
 
 static_assert(utils::singleton_info<task_context::info_type>);
@@ -175,6 +215,26 @@ inline auto post(Args&&... args)
  */
 inline void run(){
     roboctrl::get<task_context>().run();
+}
+
+/** @brief 查询全局任务上下文是否因未处理异常进入过安全停机。 */
+inline bool failed(){
+    return roboctrl::get<task_context>().failed();
+}
+
+/** @brief 查询全局任务上下文是否已经进入停机流程。 */
+inline bool shutdown_requested(){
+    return roboctrl::get<task_context>().shutdown_requested();
+}
+
+/** @brief 设置全局任务上下文的一次性安全停机任务。 */
+inline void set_shutdown_handler(task_context::shutdown_handler_type handler){
+    roboctrl::get<task_context>().set_shutdown_handler(std::move(handler));
+}
+
+/** @brief 请求运行全局任务上下文的安全停机任务。 */
+inline void request_shutdown(){
+    roboctrl::get<task_context>().request_shutdown();
 }
 
 /**

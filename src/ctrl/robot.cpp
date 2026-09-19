@@ -71,6 +71,10 @@ bool robot::gimbals_online() const {
 }
 
 void robot::set_state(robot_state state) {
+    if (state != robot_state::NoForce && roboctrl::async::shutdown_requested()) {
+        log_warn("Ignored request to leave NoForce during shutdown");
+        state = robot_state::NoForce;
+    }
     state_ = state;
     const bool gimbal_enabled = state != robot_state::NoForce;
     const bool motion_enabled = gimbal_enabled && state != robot_state::FinishInit;

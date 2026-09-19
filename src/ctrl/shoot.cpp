@@ -80,6 +80,7 @@ void shoot::start()
 
 void shoot::set_enabled(bool enabled)
 {
+    enabled = enabled && !roboctrl::async::shutdown_requested();
     enabled_ = enabled && initialized_;
     if (!enabled_) {
         firing_ = false;
@@ -124,7 +125,7 @@ bool shoot::fire_allowed() const
         (!info_.enforce_referee || referee_allows_feed(info_.bullet_caliber));
 }
 
-roboctrl::awaitable<void> shoot::update()
+roboctrl::awaitable<void> shoot::update(fp32 dt)
 {
     if (!initialized_) co_return;
     const bool motors_online = !left_friction_motor_->offline() &&
@@ -138,7 +139,7 @@ roboctrl::awaitable<void> shoot::update()
         co_return;
     }
 
-    const fp32 dt = std::chrono::duration<fp32>(info_.control_time).count();
+    if (!std::isfinite(dt) || dt < 0 || dt > std::chrono::duration<fp32>(info_.control_time * 5).count()) dt = 0;
     friction_ramp_.update(friction_enabled_ ? info_.friction_max_speed : 0.0f, dt);
     co_await left_friction_motor_->set(-friction_ramp_.state());
     co_await right_friction_motor_->set(friction_ramp_.state());
@@ -155,8 +156,13 @@ roboctrl::awaitable<void> shoot::update()
 
 roboctrl::awaitable<void> shoot::task()
 {
+    auto previous = std::chrono::steady_clock::time_point{};
     while (true) {
-        co_await update();
+        const auto now = std::chrono::steady_clock::now();
+        const auto dt = previous == std::chrono::steady_clock::time_point{} ? 0.f :
+            std::chrono::duration<fp32>(now - previous).count();
+        previous = now;
+        co_await update(dt);
         co_await roboctrl::wait_for(info_.control_time);
     }
 }

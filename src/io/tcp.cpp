@@ -28,12 +28,17 @@ void tcp::start() {
     }
     started_ = true;
     if (auto self = weak_from_this().lock()) {
-        roboctrl::spawn([self]() -> awaitable<void> {
-            co_await self->task();
-        }());
+        roboctrl::spawn(run_with_lifetime(std::move(self)));
     } else {
         roboctrl::spawn(task());
     }
+}
+
+roboctrl::awaitable<void> tcp::run_with_lifetime(std::shared_ptr<tcp> self)
+{
+    // The shared_ptr is a coroutine parameter and therefore resides in the
+    // coroutine frame until the receive loop completes.
+    co_await self->task();
 }
 
 tcp::tcp(asio::ip::tcp::socket socket, std::string key)

@@ -26,7 +26,7 @@ public:
 };
 void cycle(ctrl::shoot& shoot) {
     asio::io_context context;
-    auto done = asio::co_spawn(context, shoot.update(), asio::use_future);
+    auto done = asio::co_spawn(context, shoot.update(0.002f), asio::use_future);
     context.run();
     done.get();
 }

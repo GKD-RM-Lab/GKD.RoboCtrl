@@ -38,8 +38,8 @@ void super_cap::start() {
 
 awaitable<void> super_cap::set(bool enabled, uint16_t power_limit) {
     if (!configured_) throw std::logic_error("super capacitor is not configured");
-    requested_enabled_ = enabled;
-    requested_power_limit_ = std::min(power_limit, info_.max_power_limit);
+    requested_enabled_ = enabled && !async::shutdown_requested();
+    requested_power_limit_ = async::shutdown_requested() ? 0 : std::min(power_limit, info_.max_power_limit);
     last_command_ = std::chrono::steady_clock::now();
     co_return;
 }
@@ -53,4 +53,11 @@ awaitable<void> super_cap::task() {
         co_await get<io::can>(info_.can_name).send(info_.command_id, data);
         co_await wait_for(info_.resend_time);
     }
+}
+
+awaitable<void> super_cap::stop_output() {
+    if (!connected_) co_return;
+    co_await set(false, 0);
+    const auto zero = super_cap_protocol::encode(false, 0, info_.buffer_target);
+    co_await get<io::can>(info_.can_name).send(info_.command_id, zero);
 }

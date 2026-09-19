@@ -61,7 +61,7 @@ xmake build -y gkd-roboctrl
 git diff --check
 ```
 
-涉及配置公共结构或模板实例化时，构建 Debug/Release 二进制即可；四种车型应通过 `--config configs/<type>.yaml` 分别完成配置加载/校验测试。`tests/unit_tests.cpp` 不打开 CAN 或串口，可在无硬件环境运行。
+涉及配置公共结构或模板实例化时，应构建 Debug/Release 主目标；四份车型配置由 `tests/unit_tests.cpp` 直接逐一加载并执行语义校验，不通过 `--config` 启动主程序。该单测不打开 CAN 或串口，可在无硬件环境运行。
 
 `unit-tests` 显式使用 `-UNDEBUG` 保留既有 assert；新增协议/模拟集成测试通过抛异常报告失败。仍需分别报告 Debug/Release 的实际执行结果。本次用户要求不执行 xmake 后，采用 [无硬件直接 Clang runner](../tools/run_software_tests.py)，不编译 SocketCAN 实现，不运行机器人。
 

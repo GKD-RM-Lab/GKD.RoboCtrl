@@ -16,6 +16,7 @@
 #include <print>
 #include <span>
 #include <stdexcept>
+#include <vector>
 
 #include <iostream>
 #include <signal.h>
@@ -23,6 +24,65 @@
 using namespace std::chrono_literals;
 using namespace roboctrl;
 using namespace roboctrl::log;
+
+namespace {
+
+constexpr auto shutdown_grace_period = 20ms;
+
+template<typename Motor>
+roboctrl::awaitable<void> stop_extra_motors() {
+    std::vector<Motor*> motors;
+    roboctrl::for_each_instance<Motor>([&motors](Motor& motor) { motors.push_back(&motor); });
+    for (auto* motor : motors) {
+        try {
+            co_await motor->stop_output();
+        } catch (const std::exception& error) {
+            logger::instance().log_error("failed to stop {}: {}", motor->desc(), error.what());
+        } catch (...) {
+            logger::instance().log_error("failed to stop {}", motor->desc());
+        }
+    }
+}
+
+roboctrl::awaitable<void> safely_stop_robot()
+{
+    auto& robot = roboctrl::get<ctrl::robot>();
+    robot.set_state(ctrl::robot_state::NoForce);
+
+    // Do not rely only on the periodic group coroutine: that coroutine may be
+    // the task that just failed.  Explicitly enqueue one disabled snapshot for
+    // every group; CAN's latest-value queue replaces older pending commands.
+    std::vector<device::dji_motor_group*> groups;
+    roboctrl::for_each_instance<device::dji_motor_group>(
+        [&groups](device::dji_motor_group& group) { groups.push_back(&group); });
+    for (auto* group : groups) {
+        try {
+            co_await group->flush_commands_once();
+        } catch (const std::exception& error) {
+            logger::instance().log_error(
+                "failed to enqueue emergency zero output for {}: {}",
+                group->desc(), error.what());
+        } catch (...) {
+            logger::instance().log_error(
+                "failed to enqueue emergency zero output for {}",
+                group->desc());
+        }
+    }
+
+    co_await stop_extra_motors<device::j6006>();
+    co_await stop_extra_motors<device::m9025>();
+    try {
+        co_await roboctrl::get<device::super_cap>().stop_output();
+    } catch (const std::exception& error) {
+        logger::instance().log_error("failed to stop capacitor: {}", error.what());
+    }
+
+    // Keep the event loop alive for a bounded window so the 1 ms DJI group
+    // task can enqueue zero-current frames before task_context stops it.
+    co_await roboctrl::wait_for(shutdown_grace_period);
+}
+
+} // namespace
 
 #define check_init(conf)        \
     if(!roboctrl::init(conf))   \
@@ -149,5 +209,23 @@ int main(int argc,char** argv){
 
     LOG_INFO("Initiation finished.");
 
+    async::set_shutdown_handler(safely_stop_robot);
+
+    asio::signal_set shutdown_signals{async::io_context(), SIGINT, SIGTERM};
+    int received_signal = 0;
+    shutdown_signals.async_wait(
+        [&received_signal](const auto& error, int signal_number) {
+            if (error) {
+                return;
+            }
+            received_signal = signal_number;
+            LOG_WARN("Received signal {}; requesting safe shutdown", signal_number);
+            async::request_shutdown();
+        });
+
     async::run();
+    if (async::failed()) {
+        return 1;
+    }
+    return received_signal == 0 ? 0 : 128 + received_signal;
 }
