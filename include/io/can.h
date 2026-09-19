@@ -52,6 +52,7 @@ public:
 
     /**
      * @brief 发送带 CAN ID 的帧。
+     * @details 同一 ID 尚未写出的帧只保留最新值；正在写出的帧无法撤回。
      */
     awaitable<void> send(can_id_type id,byte_span data);
 

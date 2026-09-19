@@ -1,5 +1,7 @@
 #pragma once
+#include <chrono>
 #include <cstdint>
+#include <string>
 
 #include "core/async.hpp"
 #include "device/base.hpp"
@@ -11,6 +13,8 @@ namespace roboctrl::device{
 */
 class super_cap:public device_base,public utils::singleton_base<super_cap>,public logable<super_cap> {
 public:
+    super_cap() : device_base{std::chrono::milliseconds{100}} {}
+
     struct info_type{
         using owner_type = super_cap;
         std::string can_name;

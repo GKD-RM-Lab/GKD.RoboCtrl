@@ -47,6 +47,9 @@ namespace roboctrl::utils
             transMatrix = Matrixf<dim, dim>::eye() * delta;
             gainVector = Matrixf<dim, 1>::zeros();
             paramsVector = defaultParamsVector;
+            output = 0.0f;
+            lastUpdate = 0;
+            updateCnt = 0;
         }
 
         /**
@@ -55,17 +58,19 @@ namespace roboctrl::utils
             * @param actualOutput The actual feedback real output
             * @retval paramsVector
             */
-        const Matrixf<dim, 1> &update(Matrixf<dim, 1> &sampleVector, float actualOutput) {
+        const Matrixf<dim, 1> &update(const Matrixf<dim, 1> &sampleVector, float actualOutput) {
+            const float previousOutput = (sampleVector.trans() * paramsVector)[0][0];
             gainVector = (transMatrix * sampleVector) /
                             (1.0f + (sampleVector.trans() * transMatrix * sampleVector)[0][0] / lambda) /
                             lambda;  // Get gain vector
             paramsVector +=
-                gainVector * (actualOutput - (sampleVector.trans() * paramsVector)[0][0]);  // Get params vector
+                gainVector * (actualOutput - previousOutput);  // Get params vector
             transMatrix =
                 (transMatrix - gainVector * sampleVector.trans() * transMatrix) / lambda;  // Get transferred matrix
+            output = (sampleVector.trans() * paramsVector)[0][0];
 
             updateCnt++;
-            lastUpdate = clock();
+            lastUpdate = std::clock();
             return paramsVector;
         }
 

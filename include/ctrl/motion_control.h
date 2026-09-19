@@ -44,10 +44,12 @@ private:
     std::string control_pad_key_;
     std::chrono::steady_clock::duration control_time_ {2ms};
     device::control_pad_state input_ {};
+    control_command command_ {};
     device::chassis_base* chassis_ {nullptr};
     device::gimbal_base* gimbal_ {nullptr};
     control_mapper mapper_ {};
     bool enable_shoot_ {false};
+    bool input_pending_ {false};
 };
 
 static_assert(utils::singleton<motion_control>);

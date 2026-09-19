@@ -89,7 +89,12 @@ struct pid_base {
     /** Legacy update preserving the historical per-call PID behavior. */
     void update(T current) { update(current, T{1}); }
 
-    /** Update with a one-shot reference value. */
+    /**
+     * @brief 同时设置目标并根据当前值更新输出。
+     * @param target 本次控制的目标值
+     * @param current 当前反馈值
+     * @param dt 采样周期，单位为秒
+     */
     void update(T target, T current, T dt) {
         set_target(target);
         update(current, dt);

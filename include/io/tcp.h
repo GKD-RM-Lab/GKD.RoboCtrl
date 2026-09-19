@@ -74,6 +74,8 @@ public:
     }
 
 private:
+    static awaitable<void> run_with_lifetime(std::shared_ptr<tcp> self);
+
     asio::ip::tcp::socket socket_;
     write_queue write_queue_;
     info_type info_;

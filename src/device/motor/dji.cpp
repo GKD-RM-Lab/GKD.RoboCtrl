@@ -1,6 +1,9 @@
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <sys/types.h>
 
@@ -15,7 +18,9 @@ using namespace std::chrono_literals;
 using namespace roboctrl::device;
 using namespace roboctrl;
 
-struct _dji_upload_pkg {
+namespace {
+
+struct dji_upload_pkg {
     uint8_t angle_h;
     uint8_t angle_l;
     uint8_t speed_h;
@@ -25,6 +30,36 @@ struct _dji_upload_pkg {
     uint8_t temperature;
     uint8_t unused;
 } __attribute__((packed));
+
+static_assert(sizeof(dji_upload_pkg) == 8);
+
+struct dji_motor_measure {
+    uint16_t ecd;
+    int16_t speed_rpm;
+    int16_t given_current;
+    uint8_t temperature;
+};
+
+dji_motor_measure parse_dji_upload_pkg(io::byte_span data) {
+    const auto pkg = utils::from_bytes<dji_upload_pkg>(data);
+    return {
+        .ecd = utils::make_u16(pkg.angle_h, pkg.angle_l),
+        .speed_rpm = utils::make_i16(pkg.speed_h, pkg.speed_l),
+        .given_current = utils::make_i16(pkg.current_h, pkg.current_l),
+        .temperature = pkg.temperature,
+    };
+}
+
+int16_t saturate_current(fp32 value, fp32 limit) noexcept {
+    if (!std::isfinite(value)) {
+        return 0;
+    }
+    const auto safe_limit = std::clamp(
+        limit,
+        0.0f,
+        static_cast<fp32>(std::numeric_limits<int16_t>::max()));
+    return static_cast<int16_t>(std::clamp(value, -safe_limit, safe_limit));
+}
 
 constexpr fp32 _rpm_to_rad_s = 2.f * Pi_f / 60.f;
 constexpr fp32 _ecd_8192_to_rad  = 2.f * Pi_f / 8192.f;
@@ -41,6 +76,8 @@ static std::string __motor_tyep_to_string(dji_motor::type type){
             return "Unknown";
     }
 }
+
+} // namespace
 
 dji_motor_group::dji_motor_group(dji_motor_group::info_type info):
     info_{info}
@@ -82,7 +119,7 @@ std::pair<uint16_t, uint16_t> dji_motor::can_pkg_id() const {
     case M6020:
         if (info_.id >= 1 && info_.id <= 4)
             return {0x1ff, static_cast<uint16_t>(info_.id - 1)};
-        else if (info_.id >= 5 && info_.id <= 8)
+        else if (info_.id >= 5 && info_.id <= 7)
             return {0x2ff, static_cast<uint16_t>(info_.id - 5)};
         else {
             log_error("invalid gm6020 id: {}", info_.id);
@@ -120,12 +157,16 @@ roboctrl::awaitable<void> dji_motor_group::send_command(uint16_t can_id_) {
 
 roboctrl::awaitable<void> dji_motor_group::task(){
     while(true){
-        co_await send_command(0x1ff);
-        co_await send_command(0x200);
-        co_await send_command(0x2ff);
+        co_await flush_commands_once();
 
         co_await wait_for(1ms);
     }
+}
+
+roboctrl::awaitable<void> dji_motor_group::flush_commands_once(){
+    co_await send_command(0x1ff);
+    co_await send_command(0x200);
+    co_await send_command(0x2ff);
 }
 
 dji_motor::dji_motor(dji_motor::info_type info)
@@ -139,14 +180,17 @@ dji_motor::dji_motor(dji_motor::info_type info)
     if (info.can_name.empty()) {
         throw std::invalid_argument(std::format("DJI motor {} has no CAN dependency", info.name));
     }
-    if (info.id < 1 || info.id > 8) {
-        throw std::invalid_argument(std::format("DJI motor {} has invalid id {}", info.name, info.id));
-    }
-    if (info.radius <= 0.0f) {
+    if (!std::isfinite(info.radius) || info.radius <= 0.0f) {
         throw std::invalid_argument(std::format("DJI motor {} has invalid radius", info.name));
     }
     if (info.control_time <= std::chrono::steady_clock::duration::zero()) {
         throw std::invalid_argument(std::format("DJI motor {} has invalid control period", info.name));
+    }
+    const auto& pid = info.pid_params;
+    if (!std::isfinite(pid.kp) || !std::isfinite(pid.ki) || !std::isfinite(pid.kd) ||
+        !std::isfinite(pid.max_out) || !std::isfinite(pid.max_iout) ||
+        pid.max_out < 0.0f || pid.max_iout < 0.0f) {
+        throw std::invalid_argument(std::format("DJI motor {} has invalid PID parameters", info.name));
     }
 
     switch(info_.type_){
@@ -163,6 +207,18 @@ dji_motor::dji_motor(dji_motor::info_type info)
             throw std::invalid_argument(std::format(
                 "DJI motor {} has unsupported type {}", info.name,
                 static_cast<int>(info.type_)));
+    }
+
+    if (info.id < 1 || info.id > max_device_id(info.type_)) {
+        throw std::invalid_argument(std::format(
+            "DJI motor {} has invalid id {} for type {}",
+            info.name, info.id, __motor_tyep_to_string(info.type_)));
+    }
+    const auto current_limit = command_current_limit(info.type_);
+    if (pid.max_out > current_limit || pid.max_iout > current_limit) {
+        throw std::invalid_argument(std::format(
+            "DJI motor {} PID limit exceeds {} command range",
+            info.name, __motor_tyep_to_string(info.type_)));
     }
 
     log_debug("Dji \"{}\" motor {} created on can \"{}\" with pid(p={},i={},d={},max iout={},max out={})",
@@ -198,20 +254,47 @@ void dji_motor::connect() {
         case dji_motor::M6020:
             fallback_canid = 0x204 + info_.id;
             break;
+        default:
+            throw std::invalid_argument(std::format(
+                "DJI motor {} has unsupported type {}", info_.name,
+                static_cast<int>(info_.type_)));
     }
 
-    can.on_data(fallback_canid,[this](const _dji_upload_pkg& pkg) -> void{
-        angle_ = _ecd_8192_to_rad * static_cast<float>(utils::make_u16(pkg.angle_h, pkg.angle_l)) ;
-        angle_speed_ = _rpm_to_rad_s * static_cast<float>(utils::make_i16(pkg.speed_h, pkg.speed_l)) * reduction_ratio_;
-        torque_ = utils::make_i16(pkg.current_h, pkg.current_l);
+    can.on_data(fallback_canid, [this](io::byte_span data) {
+        const auto measure = parse_dji_upload_pkg(data);
+        angle_ = _ecd_8192_to_rad * static_cast<float>(measure.ecd);
+        angle_speed_ = _rpm_to_rad_s * static_cast<float>(measure.speed_rpm) * reduction_ratio_;
+        torque_ = measure.given_current;
 
-        const fp32 dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(info_.control_time).count();
+        const auto now = std::chrono::steady_clock::now();
+        if (!enabled_ || !target_fresh_since_enable_) {
+            current_ = 0;
+            pid_.clean();
+            last_feedback_at_ = {};
+            tick();
+            return;
+        }
+
+        fp32 dt = 0.0f;
+        if (last_feedback_at_ != std::chrono::steady_clock::time_point{}) {
+            const auto elapsed = now - last_feedback_at_;
+            if (elapsed > std::chrono::steady_clock::duration::zero() &&
+                elapsed <= info_.control_time * 5) {
+                dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(elapsed).count();
+            } else {
+                const fp32 target = pid_.target();
+                pid_.clean();
+                pid_.set_target(target);
+            }
+        }
+        last_feedback_at_ = now;
         pid_.update(linear_speed(), dt);
-        current_ = pid_.state();
+        current_ = saturate_current(
+            pid_.state(), command_current_limit(info_.type_));
 
         log_debug("angle:{}, speed:{}, torque:{} ,linear speed:{},target speed:{}",this->angle_,this->angle_speed_,this->torque_,linear_speed(),pid_.target());
         tick();
-    });
+    }, sizeof(dji_upload_pkg));
 
     group.register_motor(this);
     connected_ = true;
@@ -230,12 +313,24 @@ void dji_motor::start() {
 
 void dji_motor::disable() {
     enabled_ = false;
+    target_fresh_since_enable_ = false;
     current_ = 0;
     pid_.clean();
+    last_feedback_at_ = {};
 }
 
 void dji_motor::set_enabled(bool enabled) {
     if (enabled) {
+        if (roboctrl::async::shutdown_requested()) {
+            disable();
+            return;
+        }
+        if (!enabled_) {
+            current_ = 0;
+            target_fresh_since_enable_ = false;
+            pid_.clean();
+            last_feedback_at_ = {};
+        }
         enabled_ = true;
     } else {
         disable();
@@ -243,7 +338,15 @@ void dji_motor::set_enabled(bool enabled) {
 }
 
 roboctrl::awaitable<void> dji_motor::set(fp32 speed){ 
+    if (!std::isfinite(speed)) {
+        log_error("Rejected non-finite target for DJI motor {}", info_.name);
+        current_ = 0;
+        target_fresh_since_enable_ = false;
+        pid_.clean();
+        co_return;
+    }
     pid_.set_target(speed);
+    target_fresh_since_enable_ = enabled_;
 
     log_debug("target set to :{}",speed);
 

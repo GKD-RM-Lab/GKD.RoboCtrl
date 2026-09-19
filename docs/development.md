@@ -61,9 +61,9 @@ xmake build -y gkd-roboctrl
 git diff --check
 ```
 
-涉及配置公共结构或模板实例化时，构建 Debug/Release 二进制即可；四种车型应通过 `--config configs/<type>.yaml` 分别完成配置加载/校验测试。`tests/unit_tests.cpp` 不打开 CAN 或串口，可在无硬件环境运行。
+涉及配置公共结构或模板实例化时，应构建 Debug/Release 主目标；四份车型配置由 `tests/unit_tests.cpp` 直接逐一加载并执行语义校验，不通过 `--config` 启动主程序。该单测不打开 CAN 或串口，可在无硬件环境运行。
 
-测试使用 `assert`，Release 下通常定义 `NDEBUG` 时可能弱化断言，因此 CI 的 Debug 测试结果是逻辑检查主证据；Release 构建主要覆盖优化模式下的编译链接。若扩展测试框架，应让失败在所有构建模式都产生非零退出码。
+单元测试使用独立的 `CHECK` 失败机制，不受 Release 模式的 `NDEBUG` 影响；表达式会在 Debug/Release 中执行，失败均产生非零退出码。`unit-tests` 同时编译 Core 异步/日志、发射互锁纯逻辑和设备基类等无硬件运行源码，覆盖异常停机、回调生命周期、日志流向及关键数值/配置行为。CI 必须在 Debug 和 Release 两种模式下分别构建并运行这套测试。
 
 文档验证至少包括：
 

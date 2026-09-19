@@ -3,24 +3,39 @@
 #include "io/can.h"
 #include "utils/utils.hpp"
 
+#include <cmath>
+
 using namespace roboctrl::device;
 
-struct __super_cap_recive_pkg
+namespace {
+
+struct super_cap_receive_packet
 {
-    uint8_t errorCode;
-    float chassisPower;
-    uint16_t chassisPowerlimit;
-    uint8_t capEnergy;
+    std::uint8_t error_code;
+    float chassis_power;
+    std::uint16_t chassis_power_limit;
+    std::uint8_t cap_energy;
 } __attribute__((packed));
+
+static_assert(sizeof(super_cap_receive_packet) == 8);
+
+} // namespace
 
 bool super_cap::init(const super_cap::info_type& info){
     info_ = info;
 
-    roboctrl::get<roboctrl::io::can>(info.can_name).on_data(0x51,[&](const __super_cap_recive_pkg& pkg){
-        chassis_power_ = pkg.chassisPower;
-        chassis_power_limit_ = pkg.chassisPowerlimit;
-        energy_ = pkg.capEnergy;
-        log_info("error code : {},chassis_power: {}, chassis_power_limit: {}, energy: {}",pkg.errorCode,chassis_power_,chassis_power_limit_,energy_);
+    roboctrl::get<roboctrl::io::can>(info.can_name).on_data(0x51,[this](const super_cap_receive_packet& pkg){
+        if (!std::isfinite(pkg.chassis_power)) {
+            log_warn("discarding super-cap feedback with non-finite chassis power");
+            return;
+        }
+
+        chassis_power_ = pkg.chassis_power;
+        chassis_power_limit_ = pkg.chassis_power_limit;
+        energy_ = pkg.cap_energy;
+        tick();
+        log_info("error code: {}, chassis power: {}, chassis power limit: {}, energy: {}",
+                 pkg.error_code, chassis_power_, chassis_power_limit_, energy_);
     });
 
     return true;

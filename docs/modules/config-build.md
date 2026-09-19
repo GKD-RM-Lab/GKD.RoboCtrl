@@ -45,10 +45,11 @@ dji_motors:
 启动前 `validate_configuration()` 检查：
 
 - 各类 key 非空且唯一；
+- `interface_name` 和串口 `device` 配置字符串各自唯一，禁止两个逻辑对象直接复用同一字符串；路径别名或符号链接是否指向同一物理设备仍需在目标主机检查；
 - 电机、IMU、ControlPad 引用的 CAN/串口存在；
-- DJI ID、半径、控制周期有效；
-- 反馈 ID 和发送指令槽不冲突；
-- 已启用控制子系统所需的语义化电机名存在。
+- DJI 型号仅限 `M2006`、`M3508`、`M6020`，且 ID、型号级命令上限、半径、控制周期有效；
+- 按物理 CAN 接口计算的反馈 ID 和发送指令槽不冲突；
+- 已启用控制子系统所需的语义化电机名存在，且一个电机不能同时承担两个底盘、云台或发射执行器角色。
 
 校验发生在硬件构造前，目的是让静态配置错误在无硬件测试和 CI 中就失败。它不能验证设备文件是否存在、CAN 是否 up、接线方向、PID 稳定性或实车安全。
 
@@ -74,7 +75,7 @@ xmake build -y unit-tests
 xmake run unit-tests
 ```
 
-xmake 强制 LLVM、C++23 和 libc++，依赖 `asio`、`cxxopts`、启用 YAML 的 `reflect-cpp`，主程序链接 pthread。车型不参与编译，运行时通过 `--config` 选择；`unit-tests` 只编译 `tests/unit_tests.cpp` 与 `src/device/base.cpp`，不打开 CAN/串口。
+xmake 强制 LLVM、C++23 和 libc++，依赖 `asio`、`cxxopts`、启用 YAML 的 `reflect-cpp`，主程序链接 pthread。车型不参与编译，运行时通过 `--config` 选择；`unit-tests` 除测试入口外只链接 Core 异步/日志、发射互锁纯逻辑和设备基类等无硬件源码，不打开 CAN 或串口。
 
 若变更公共模板、配置结构、concept 或跨车型语义，至少执行：
 
@@ -84,7 +85,9 @@ xmake build -y gkd-roboctrl unit-tests
 xmake run unit-tests
 ```
 
-Release 相关、编译器优化敏感或准备合并的改动还应重复 `-m release`。不要用循环运行主程序。
+Release 相关、编译器优化敏感或准备合并的改动还应重复 `-m release`。不要用循环运行主程序。直接依赖固定为 Asio 1.36.0、cxxopts v3.3.1、reflect-cpp v0.25.0，CI 固定 xmake 3.1.1。
+
+英雄配置的 M3508 云台俯仰电机命令上限已从 30000 修正为该型号允许的 16384；该变化会限制原先越界的输出，仍需在台架重新确认控制响应。
 
 `.github/workflows/build-test.yml` 在 Ubuntu 上分别构建 Debug/Release，并运行单元测试；车型配置作为独立运行时数据，不再形成构建矩阵。工作流中的 xmake 通用选项统一放在目标名之前（例如 `xmake build -y gkd-roboctrl`），兼容当前使用的 xmake 3.1.1。文档部署工作流监听默认分支 `master`。
 

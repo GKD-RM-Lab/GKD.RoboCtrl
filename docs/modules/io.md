@@ -13,6 +13,8 @@ IO 层只负责字节传输和回调分发。typed callback 在 payload 长度�
 
 二者都允许为同一通道注册多个同步或协程回调。底层收到数据后先复制到只读共享缓冲，保证分发协程执行期间缓冲仍有效；typed callback 会用 `utils::from_bytes<T>` 转换成平凡可复制结构体。keyed typed callback 还会记录 `sizeof(T)`，分发前先做严格长度匹配；同一个 key 注册冲突长度会立即抛出异常。单个回调抛出的异常会被记录并隔离，不会停止整个事件循环。
 
+typed callback 的解析对象保存在分发协程帧中，异步回调完成前不会析构；返回类型只允许 `void` 或 `awaitable<void>`，包括 `const byte_span&` 在内的 raw span 回调不会误入 typed 重载。bare IO 的 typed 发送统一使用自由函数 `send(io, package)` 或 `send<io_type>(key, package)`；该函数按值保存 package，并让序列化缓冲存活到具体 IO 的 `send(byte_span)` 完成。`bare_io_base` 本身没有底层写接口，不提供成员形式的 typed send。CAN/Serial 等 keyed IO 需先 `to_bytes()`，再连同通道 key 调用具体 `send()`。
+
 这层的开发理念是“传输与解释分离”：IO 只知道字节、通道 key 和帧边界，不知道 IMU、遥控器或电机的业务含义。协议字段、单位和设备状态应留在 Device 层。
 
 ## 生命周期
@@ -21,7 +23,9 @@ CAN、Serial、UDP 和主动 TCP 连接的构造函数只建立资源；长期�
 
 `start()` 都通过 `started_` 保证幂等。主入口当前只构造并启动 CAN、Serial；UDP/TCP 类型可用但没有出现在车型配置和启动清单中。`tcp_server` 同样提供幂等 `start()`，使用者需要显式启动它。
 
-所有 IO 的发送都经过对象内的串行写队列。`send()` 会先复制数据并在入队后返回，实际写入由唯一 writer 协程按顺序完成；动态 TCP 连接在 writer 协程整个排空期间保持存活。队列超过 64 KiB 时丢弃新报文并记录告警，写失败时清空剩余队列并记录错误。
+所有 IO 的发送都经过对象内的串行写队列。`send()` 会先复制数据并在入队后返回，实际写入由唯一 writer 协程完成；动态 TCP 连接在 writer 协程整个排空期间保持存活。普通串口、UDP、TCP 报文保持 FIFO。CAN 对尚未写出的报文按 CAN ID 合并，同一 ID 只保留最新值，因此后续零输出能够替换队列中的旧非零控制帧；已经交给内核的在途帧无法撤回。
+
+`co_await send()` 成功只表示报文已复制入队或完成同 ID 替换，不表示内核写入已经完成。队列超过 64 KiB 且没有可替换项时抛出 `write_queue_full`，不会静默报告成功；同 ID 替换在容量判断前执行，即使队列已满也不会丢弃替换值。除正常取消 `operation_aborted` 外的 writer 异常会清空 pending 队列并被锁存，后续发送会重抛原异常；当前 IO 没有自动重连，恢复需要重建对应 IO 对象。
 
 ## 传输边界
 
@@ -32,7 +36,7 @@ CAN、Serial、UDP 和主动 TCP 连接的构造函数只建立资源；长期�
 
 ### CAN / SocketCAN
 
-`io::can` 是以接口名（如 `can0`、`CAN_CHASSIS`）为 multiton key 的 Linux SocketCAN 封装。构造函数同步执行 `socket/ioctl/bind` 并把 fd 交给 `asio::posix::stream_descriptor`；失败时抛异常，入口不会进入事件循环。接收循环只接受 `sizeof(can_frame)`，检查 DLC 和帧标志；发送 payload 上限是 8 字节，并通过串行写队列写入整帧。
+`io::can` 是 Linux SocketCAN 封装：逻辑 `name`（如 `CAN_CHASSIS`）是 multiton key，`interface_name`（如 `can0`）是实际绑定的物理接口字符串。构造函数同步执行 `socket/ioctl/bind` 并把 fd 交给 `asio::posix::stream_descriptor`；失败时抛异常，入口不会进入事件循环。接收循环只接受 `sizeof(can_frame)`，检查 DLC 和帧标志；发送 payload 上限是 8 字节，并通过串行写队列写入整帧。控制报文积压时按完整 CAN ID 合并 pending 帧，保持至多一帧最新值。
 
 注意：回调 key 当前直接使用 `can_frame.can_id`，扩展帧/RTR/错误标志是否需要 mask 必须由协议设计明确。此实现依赖 `<linux/can.h>`，不是 macOS 原生可运行实现。
 
@@ -62,6 +66,8 @@ CAN、Serial、UDP 和主动 TCP 连接的构造函数只建立资源；长期�
 主动 `io::tcp` 构造时同步连接固定端点，`start()` 后用 `async_read_some` 分发数据块。TCP 只提供字节流，不保证一次 dispatch 对应一个应用层消息；设备协议必须自行做累计、定界和粘包/拆包处理。
 
 `tcp_server` 接受连接后创建 `shared_ptr<tcp>`、保存在连接表中、启动连接接收任务并触发 `on_connect`；连接断开后会从连接表移除。当前没有断线重连或应用层协议解析。
+
+共享 TCP 连接的接收入口把 `shared_ptr<tcp>` 作为协程参数保存到 coroutine frame，接收任务结束前不会因临时协程闭包析构而提前释放连接。
 
 成熟度：基础实现存在、主流程 **未接入**。
 

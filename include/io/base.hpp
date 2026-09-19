@@ -17,6 +17,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstring>
+#include <functional>
 #include <span>
 #include <tuple>
 #include <type_traits>
@@ -42,6 +43,48 @@ using data_ptr = std::shared_ptr<const std::vector<std::byte>>;
  * @brief 只读 byte span。
  */
 using byte_span = std::span<const std::byte>;
+
+namespace detail {
+
+template<typename Fn>
+awaitable<void> invoke_raw_callback(Fn& fn, data_ptr data) {
+    const byte_span bytes{data->data(), data->size()};
+    if constexpr (std::same_as<std::invoke_result_t<Fn&, byte_span>, awaitable<void>>) {
+        co_await fn(bytes);
+    } else {
+        fn(bytes);
+    }
+}
+
+template<typename Fn>
+using typed_callback_arg_t = utils::function_arg_t<Fn>;
+
+template<typename Fn>
+concept typed_callback_fn =
+    utils::package<std::remove_cvref_t<typed_callback_arg_t<Fn>>> &&
+    (std::same_as<std::invoke_result_t<Fn&, typed_callback_arg_t<Fn>>, void> ||
+     std::same_as<std::invoke_result_t<Fn&, typed_callback_arg_t<Fn>>, awaitable<void>>);
+
+/**
+ * @brief 解析 typed payload，并让解析结果覆盖异步回调的完整执行期。
+ *
+ * `asio::awaitable` 是惰性协程。若直接把 `from_bytes()` 返回的临时对象传给
+ * 异步回调，回调真正开始执行前该对象就可能已经析构。这里把解析结果保存在
+ * 当前协程帧中，并等待用户回调完成后才释放。
+ */
+template<typename Arg, typename Fn>
+awaitable<void> invoke_typed_callback(Fn& fn, byte_span bytes) {
+    using package_type = std::remove_cvref_t<Arg>;
+    auto package = utils::from_bytes<package_type>(bytes);
+
+    if constexpr (std::same_as<std::invoke_result_t<Fn&, Arg>, awaitable<void>>) {
+        co_await std::invoke(fn, static_cast<Arg>(package));
+    } else {
+        std::invoke(fn, static_cast<Arg>(package));
+    }
+}
+
+} // namespace detail
 
 /**
  * @brief 将任意满足 byte_container 的数据拷贝到共享缓冲。
@@ -73,30 +116,22 @@ public:
      */
     inline void on_data(callback_fn<byte_span> auto fn){
         callback_.add([fn](data_ptr data) mutable -> auto {
-            return fn(std::span{data->data(), data->size()});
+            return detail::invoke_raw_callback(fn, std::move(data));
         });
     }
 
-    template<typename Fn>
-    requires (!std::same_as<utils::function_arg_t<Fn>,byte_span>)
+    template<detail::typed_callback_fn Fn>
+    requires (!std::same_as<std::remove_cvref_t<utils::function_arg_t<Fn>>,byte_span>)
     inline void on_data(Fn&& fn)
     {
         using Arg = utils::function_arg_t<Fn>;
         static_assert(roboctrl::utils::package<std::remove_cvref_t<Arg>>);
 
         on_data([fn = std::forward<Fn>(fn)](byte_span bytes) mutable {
-            return fn(utils::from_bytes<std::remove_cvref_t<Arg>>(bytes));
+            return detail::invoke_typed_callback<Arg>(fn, bytes);
         });
     }
 
-    template<roboctrl::utils::package T>
-    /**
-     * @brief 发送平凡类型数据。
-     */
-     requires (!std::same_as<T, byte_span>)
-    inline awaitable<void> send(const T& data){
-        co_await send(utils::to_bytes(data));
-    }
 protected:
     /**
      * @brief 分发收到的字节流。
@@ -137,22 +172,22 @@ public:
             }
         }
         callbacks_[key].add([fn](data_ptr data) mutable -> auto{
-            return fn(std::span{data->data(),data->size()});
+            return detail::invoke_raw_callback(fn, std::move(data));
         });
     }
 
     /**
      * @brief 注册平凡类型包的回调。
      */
-    template<typename Fn>
-    requires (!std::same_as<utils::function_arg_t<Fn>,byte_span>)
+    template<detail::typed_callback_fn Fn>
+    requires (!std::same_as<std::remove_cvref_t<utils::function_arg_t<Fn>>,byte_span>)
     inline void on_data(const TK& key,Fn&& fn)
     {
         using Arg = utils::function_arg_t<Fn>;
         static_assert(roboctrl::utils::package<std::remove_cvref_t<Arg>>);
         
         on_data(key,[fn = std::forward<Fn>(fn)](byte_span bytes) mutable {
-            return fn(utils::from_bytes<std::remove_cvref_t<Arg>>(bytes));
+            return detail::invoke_typed_callback<Arg>(fn, bytes);
         },sizeof(Arg));
     }
 protected:
@@ -384,8 +419,10 @@ awaitable<void> send(const typename io_type::info_type::key_type& key,byte_span 
  * ```
  */
 template<bare_io io_type,utils::package T>
-awaitable<void> send(io_type& io,const T& pkg){
-    co_await send(io,utils::to_bytes(pkg));
+requires (!std::same_as<T, byte_span>)
+awaitable<void> send(io_type& io,T pkg){
+    const auto bytes = utils::to_bytes(pkg);
+    co_await io.send(byte_span{bytes});
 }
 
 /**
@@ -397,8 +434,10 @@ awaitable<void> send(io_type& io,const T& pkg){
  * ```
  */
 template<bare_io io_type,utils::package T>
-awaitable<void> send(const typename io_type::info_type::key_type& key,const T& pkg){
-    co_await send(key,utils::to_bytes(pkg));
+requires (!std::same_as<T, byte_span>)
+awaitable<void> send(typename io_type::info_type::key_type key,T pkg){
+    const auto bytes = utils::to_bytes(pkg);
+    co_await send<io_type>(key,byte_span{bytes});
 }
 }
  

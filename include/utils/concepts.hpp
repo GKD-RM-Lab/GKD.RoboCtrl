@@ -88,9 +88,35 @@ struct pair {
     T& left { p.first };
     U& second { p.second };
     U& right { p.second };
-    explicit pair(auto&&... args) : p { std::forward<decltype(args)>(args)... } {}
+
     pair() = default;
+
+    template <typename... Args>
+        requires (sizeof...(Args) > 0 && std::is_constructible_v<std::pair<T, U>, Args...>)
+    explicit pair(Args&&... args)
+        : p { std::forward<Args>(args)... }
+    {}
+
+    pair(const pair& other)
+        : p { other.p }, first { p.first }, left { p.first }, second { p.second }, right { p.second }
+    {}
+
+    pair(pair&& other) noexcept(std::is_nothrow_move_constructible_v<std::pair<T, U>>)
+        : p { std::move(other.p) }, first { p.first }, left { p.first }, second { p.second }, right { p.second }
+    {}
+
+    pair& operator=(const pair& other) {
+        p = other.p;
+        return *this;
+    }
+
+    pair& operator=(pair&& other) noexcept(std::is_nothrow_move_assignable_v<std::pair<T, U>>) {
+        p = std::move(other.p);
+        return *this;
+    }
+
     operator std::pair<T, U>& () { return p; }
+    operator const std::pair<T, U>& () const { return p; }
 };
 
 /**

@@ -29,6 +29,31 @@ public:
         M6020 = 6020
     };
 
+    /** @brief 协议允许的最大设备 ID。未知型号返回 0。 */
+    static constexpr int max_device_id(type motor_type) noexcept {
+        switch (motor_type) {
+        case M2006:
+        case M3508:
+            return 8;
+        case M6020:
+            return 7;
+        }
+        return 0;
+    }
+
+    /** @brief DJI 电调命令字段的型号级绝对值上限。未知型号返回 0。 */
+    static constexpr fp32 command_current_limit(type motor_type) noexcept {
+        switch (motor_type) {
+        case M2006:
+            return 10000.0f;
+        case M3508:
+            return 16384.0f;
+        case M6020:
+            return 30000.0f;
+        }
+        return 0.0f;
+    }
+
     /**
      * @brief 电机初始化参数。
      */
@@ -63,12 +88,14 @@ public:
      */
     awaitable<void> set(fp32 speed) override;
     awaitable<void> task();
-    awaitable<void> enable() override { enabled_ = true; co_return; }
+    awaitable<void> enable() override { set_enabled(true); co_return; }
     void disable() override;
     void set_enabled(bool enabled) override;
 
     inline int16_t current() const {
-        return enabled_ && !offline() ? current_ : int16_t{0};
+        return enabled_ && target_fresh_since_enable_ && !offline()
+            ? current_
+            : int16_t{0};
     }
 private: 
     std::pair<uint16_t,uint16_t> can_pkg_id() const;
@@ -81,6 +108,8 @@ private:
     bool connected_ {false};
     bool started_ {false};
     bool enabled_ {false};
+    bool target_fresh_since_enable_ {false};
+    std::chrono::steady_clock::time_point last_feedback_at_ {};
 };
 
 static_assert(multiton_info<dji_motor::info_type>);
@@ -113,6 +142,12 @@ public:
     dji_motor_group(info_type info);
 
     void start();
+
+    /**
+     * @brief 立即按当前安全门状态刷新一轮全部命令帧。
+     * @details 用于正常周期发送，也用于异常停机时在周期协程退出后显式补发零输出。
+     */
+    awaitable<void> flush_commands_once();
 
     /**
      * @brief 与调度器协同的任务，负责读取反馈等。

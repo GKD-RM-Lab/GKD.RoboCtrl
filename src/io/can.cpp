@@ -123,6 +123,7 @@ roboctrl::awaitable<void> can::send(can_id_type id, byte_span data) {
 
     log_debug("send can frame: {}", frame);
 
-    co_await write_queue_.send(
+    co_await write_queue_.send_latest(
+        id,
         std::span<const std::byte>{reinterpret_cast<const std::byte*>(&frame), sizeof(frame)});
 }

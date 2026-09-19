@@ -9,8 +9,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
-#include <limits>
 
 #include "ctrl/robot.h"
 #include "device/controlpad.h"
@@ -66,16 +66,34 @@ inline void validate_configuration(
     validate_unique_keys("serial", serials);
     validate_unique_keys("DJI motor", motors);
 
+    std::unordered_map<std::string_view, std::string_view> can_interfaces;
+    std::unordered_map<std::string_view, std::string_view> physical_can_owners;
     for (const auto& can : cans) {
         if (can.interface_name.empty()) {
             throw std::invalid_argument(std::format(
                 "CAN {} interface_name must not be empty", can.name));
         }
+        can_interfaces.emplace(can.key(), can.interface_name);
+        const auto [existing, inserted] = physical_can_owners.emplace(
+            can.interface_name, can.key());
+        if (!inserted) {
+            throw std::invalid_argument(std::format(
+                "CAN {} and {} reference the same physical interface {}",
+                existing->second, can.key(), can.interface_name));
+        }
     }
+    std::unordered_map<std::string_view, std::string_view> physical_serial_owners;
     for (const auto& serial : serials) {
         if (serial.device.empty() || serial.baud_rate == 0) {
             throw std::invalid_argument(std::format(
                 "serial {} has invalid device or baud rate", serial.name));
+        }
+        const auto [existing, inserted] = physical_serial_owners.emplace(
+            serial.device, serial.key());
+        if (!inserted) {
+            throw std::invalid_argument(std::format(
+                "serial {} and {} reference the same physical device {}",
+                existing->second, serial.key(), serial.device));
         }
     }
     if (control_pad.name.empty() || control_pad.serial_name.empty()) {
@@ -86,11 +104,6 @@ inline void validate_configuration(
     }
     if (robot.control_pad_key.empty()) {
         throw std::invalid_argument("robot control_pad_key must not be empty");
-    }
-
-    std::unordered_set<std::string_view> can_names;
-    for (const auto& can : cans) {
-        can_names.emplace(can.key());
     }
 
     std::unordered_set<std::string_view> serial_names;
@@ -122,11 +135,22 @@ inline void validate_configuration(
     };
     for (const auto& motor : motors) {
         motor_names.emplace(motor.name);
-        if (!can_names.contains(motor.can_name)) {
+        const auto can = can_interfaces.find(motor.can_name);
+        if (can == can_interfaces.end()) {
             throw std::invalid_argument(std::format(
                 "DJI motor {} references missing CAN {}", motor.name, motor.can_name));
         }
-        if (motor.id < 1 || motor.id > 8) {
+        switch (motor.type_) {
+        case device::dji_motor::M2006:
+        case device::dji_motor::M3508:
+        case device::dji_motor::M6020:
+            break;
+        default:
+            throw std::invalid_argument(std::format(
+                "DJI motor {} has unknown type {}",
+                motor.name, static_cast<int>(motor.type_)));
+        }
+        if (motor.id < 1 || motor.id > device::dji_motor::max_device_id(motor.type_)) {
             throw std::invalid_argument(std::format(
                 "DJI motor {} has invalid id {}", motor.name, motor.id));
         }
@@ -143,8 +167,8 @@ inline void validate_configuration(
             !finite(motor.pid_params.ki) || !finite(motor.pid_params.kd) ||
             !finite(motor.pid_params.max_out) || !finite(motor.pid_params.max_iout) ||
             motor.pid_params.max_out < 0.0f || motor.pid_params.max_iout < 0.0f ||
-            motor.pid_params.max_out > static_cast<float>(std::numeric_limits<int16_t>::max()) ||
-            motor.pid_params.max_iout > static_cast<float>(std::numeric_limits<int16_t>::max())) {
+            motor.pid_params.max_out > device::dji_motor::command_current_limit(motor.type_) ||
+            motor.pid_params.max_iout > device::dji_motor::command_current_limit(motor.type_)) {
             throw std::invalid_argument(std::format(
                 "DJI motor {} has invalid PID parameters", motor.name));
         }
@@ -152,7 +176,7 @@ inline void validate_configuration(
         const int feedback_id = motor.type_ == device::dji_motor::M6020
             ? 0x204 + motor.id
             : 0x200 + motor.id;
-        const auto feedback_slot = std::format("{}:{:x}", motor.can_name, feedback_id);
+        const auto feedback_slot = std::format("{}:{:x}", can->second, feedback_id);
         if (!feedback_slots.emplace(feedback_slot).second) {
             throw std::invalid_argument(std::format(
                 "duplicate DJI feedback slot {}", feedback_slot));
@@ -168,7 +192,7 @@ inline void validate_configuration(
             command_index = motor.id <= 4 ? motor.id - 1 : motor.id - 5;
         }
         const auto command_slot = std::format(
-            "{}:{:x}:{}", motor.can_name, command_id, command_index);
+            "{}:{:x}:{}", can->second, command_id, command_index);
         if (!command_slots.emplace(command_slot).second) {
             throw std::invalid_argument(std::format(
                 "duplicate DJI command slot {}", command_slot));
@@ -181,12 +205,22 @@ inline void validate_configuration(
                 "{} requires missing motor {}", subsystem, name));
         }
     };
+    std::unordered_map<std::string_view, std::string_view> motor_roles;
+    const auto bind_motor = [&](std::string_view name, std::string_view role) {
+        require_motor(name, role);
+        const auto [existing, inserted] = motor_roles.emplace(name, role);
+        if (!inserted) {
+            throw std::invalid_argument(std::format(
+                "motor {} is assigned to both {} and {}",
+                name, existing->second, role));
+        }
+    };
 
     if (robot.enable_chassis) {
-        require_motor(robot.chassis_info.left_front_motor, "chassis");
-        require_motor(robot.chassis_info.right_front_motor, "chassis");
-        require_motor(robot.chassis_info.left_rear_motor, "chassis");
-        require_motor(robot.chassis_info.right_rear_motor, "chassis");
+        bind_motor(robot.chassis_info.left_front_motor, "chassis.left_front_motor");
+        bind_motor(robot.chassis_info.right_front_motor, "chassis.right_front_motor");
+        bind_motor(robot.chassis_info.left_rear_motor, "chassis.left_rear_motor");
+        bind_motor(robot.chassis_info.right_rear_motor, "chassis.right_rear_motor");
         if (robot.chassis_info.control_time <= std::chrono::steady_clock::duration::zero() ||
             !std::isfinite(robot.chassis_info.max_rotate_speed) ||
             robot.chassis_info.max_rotate_speed <= 0.0f) {
@@ -194,8 +228,8 @@ inline void validate_configuration(
         }
     }
     if (robot.enable_gimbal) {
-        require_motor(robot.gimbal_info.yaw_motor_key, "gimbal");
-        require_motor(robot.gimbal_info.pitch_motor_key, "gimbal");
+        bind_motor(robot.gimbal_info.yaw_motor_key, "gimbal.yaw_motor_key");
+        bind_motor(robot.gimbal_info.pitch_motor_key, "gimbal.pitch_motor_key");
         if (robot.gimbal_info.imu_key != imu.key()) {
             throw std::invalid_argument(std::format(
                 "gimbal references missing IMU {}", robot.gimbal_info.imu_key));
@@ -214,9 +248,9 @@ inline void validate_configuration(
         }
     }
     if (robot.enable_shoot) {
-        require_motor(robot.shoot_info.left_friction_motor, "shoot");
-        require_motor(robot.shoot_info.right_friction_motor, "shoot");
-        require_motor(robot.shoot_info.trigger_motor, "shoot");
+        bind_motor(robot.shoot_info.left_friction_motor, "shoot.left_friction_motor");
+        bind_motor(robot.shoot_info.right_friction_motor, "shoot.right_friction_motor");
+        bind_motor(robot.shoot_info.trigger_motor, "shoot.trigger_motor");
         if (robot.shoot_info.control_time <= std::chrono::steady_clock::duration::zero() ||
             robot.shoot_info.jam_release_time < std::chrono::steady_clock::duration::zero() ||
             !std::isfinite(robot.shoot_info.friction_params.acc) ||

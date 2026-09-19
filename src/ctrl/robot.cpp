@@ -65,8 +65,15 @@ bool robot::init(const info_type& info){
 }
 
 void robot::set_state(robot_state state) {
+    if (state != robot_state::NoForce && roboctrl::async::shutdown_requested()) {
+        log_warn("Ignored request to leave NoForce during shutdown");
+        state = robot_state::NoForce;
+    }
     state_ = state;
-    if (state == robot_state::NoForce) {
+    if (state == robot_state::NoForce && enable_shoot_) {
+        auto& shoot = roboctrl::get<ctrl::shoot>();
+        shoot.set_firing(false);
+        shoot.set_friction_enabled(false);
     }
     const bool enabled = state != robot_state::NoForce;
     if (enable_chassis_ && chassis_) chassis_->set_enabled(enabled);

@@ -42,23 +42,7 @@ public:
      * @param args 透传给回调的参数
      */
     void operator()(Args... args) const {
-        auto fns = fns_;
-        auto call_args = std::make_tuple(std::move(args)...);
-        roboctrl::spawn(
-            [fns = std::move(fns), call_args = std::move(call_args)]() mutable -> awaitable<void> {
-                for (auto& fn : fns) {
-                    try {
-                        co_await std::apply(fn, call_args);
-                    } catch (const std::exception& error) {
-                        logger::instance().log_error(
-                            "callback failed: {}", error.what());
-                    } catch (...) {
-                        logger::instance().log_error(
-                            "callback failed with an unknown exception");
-                    }
-                }
-            }()
-        );
+        roboctrl::spawn(invoke_all(fns_, stored_args_type{std::move(args)...}));
     }
 
     /**
@@ -81,7 +65,28 @@ public:
     }
 
 private:
-    std::vector<std::function<awaitable<void>(Args...)>> fns_;
+    using callback_type = std::function<awaitable<void>(Args...)>;
+    using stored_args_type = std::tuple<std::decay_t<Args>...>;
+
+    static awaitable<void> invoke_all(std::vector<callback_type> fns,
+                                      stored_args_type call_args) {
+        // fns and call_args are coroutine parameters, so they live in the
+        // coroutine frame.  An immediately-invoked capturing coroutine lambda
+        // would instead retain a pointer to a temporary closure.
+        for (auto& fn : fns) {
+            try {
+                co_await std::apply(fn, call_args);
+            } catch (const std::exception& error) {
+                logger::instance().log_error(
+                    "callback failed: {}", error.what());
+            } catch (...) {
+                logger::instance().log_error(
+                    "callback failed with an unknown exception");
+            }
+        }
+    }
+
+    std::vector<callback_type> fns_;
 };
 
 } // namespace roboctrl

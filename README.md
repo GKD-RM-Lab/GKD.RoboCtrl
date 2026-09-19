@@ -79,7 +79,7 @@ roboctrl::awaitable<void> task(){
 - 裸 IO：直接分发消息，例如总线，见 `roboctrl::io::bare_io_base`。
 - 带键值 IO：根据信息携带的“键”分发消息，例如CAN，见 `roboctrl::io::keyed_io_base`。
 
-两类 IO 都可以通过 `on_data` 函数注册回调，并且支持重复注册回调多个回调函数；也支持通过 `send` 函数发送字节数组或 `utils::package` 。
+两类 IO 都可以通过 `on_data` 注册多个回调。具体 IO 的 `send` 负责字节发送；bare IO 另有 `send(io, package)` typed 辅助，CAN/Serial 等 keyed IO 需先序列化并显式提供通道 key。
 
 ### 裸 IO（bare_io_base）
 
@@ -91,7 +91,8 @@ roboctrl::awaitable<void> task(){
 注册回调：
 
 ```cpp
-udp u{ udp::info_type{.key_ = "dbg", .address = "127.0.0.1", .port = 9000, .context = roboctrl::get<roboctrl::task_context>() } };
+roboctrl::io::udp u{roboctrl::io::udp::info_type{
+    .key_ = "dbg", .address = "127.0.0.1", .port = 9000}};
 u.on_data([](roboctrl::io::byte_span bytes) -> roboctrl::awaitable<void> {
     // 处理收到的数据
     co_return;
@@ -115,13 +116,15 @@ co_await roboctrl::io::send(u, p);
 和 `roboctrl::io::bare_io` 类似，但根据 key 分发数据，例如在 CAN 总线中用 CAN ID 作为键：
 
 ```cpp
-can c{ can::info_type{ .can_name = "can0", .context = roboctrl::get<roboctrl::task_context>() } };
+roboctrl::io::can c{roboctrl::io::can::info_type{
+    .name = "chassis", .interface_name = "can0"}};
 
 c.on_data(0x201u, [](roboctrl::io::byte_span buf) -> roboctrl::awaitable<void> {
     // 只处理 ID 为 0x201 的帧
     co_return;
 });
 
+std::array<std::byte, 8> some_data{};
 co_await c.send(0x201u, std::span{some_data});
 ```
 
@@ -149,11 +152,11 @@ using parser_t = roboctrl::io::combined_parser<
 ### 具体 IO 实现
 
 - UDP：@ref roboctrl::io::udp
-- TCP 客户端/服务端：@ref roboctrl::io::tcp 与 @ref roboctrl::io::tcp_server 。注意
+- TCP 客户端/服务端：@ref roboctrl::io::tcp 与 @ref roboctrl::io::tcp_server
 - 串口：@ref roboctrl::io::serial
 - CAN（SocketCAN）：@ref roboctrl::io::can
 
-这些类均派生自上述基类，提供 `send()` 和 `task()` 协程接口，并可通过 `desc()` 输出简要描述。
+UDP、TCP 连接、串口和 CAN 派生自上述 IO 基类并提供 `send()` / `task()`；`tcp_server` 是管理监听器与连接集合的独立类型。
 
 ### 回调与协程
 

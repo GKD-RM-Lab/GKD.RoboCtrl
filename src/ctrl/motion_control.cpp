@@ -14,7 +14,10 @@ bool motion_control::init(const info_type& info) {
     chassis_ = robot.chassis();
     gimbal_ = robot.gimbal();
     auto& pad = roboctrl::get<device::control_pad>(control_pad_key_);
-    pad.on_update([this](const device::control_pad_state& input) { input_ = input; });
+    pad.on_update([this](const device::control_pad_state& input) {
+        input_ = input;
+        input_pending_ = true;
+    });
     roboctrl::spawn(task());
     return true;
 }
@@ -23,13 +26,6 @@ void motion_control::stop_outputs() {
     if (chassis_) {
         chassis_->set_planar_velocity({0.0f, 0.0f});
         chassis_->set_rotate_speed(0.0f);
-    }
-    if (gimbal_) {
-        gimbal_->set_target_yaw(0.0f);
-        gimbal_->set_target_pitch(0.0f);
-    }
-    if (roboctrl::get<robot>().state() == robot_state::NoForce) {
-        mapper_.reset();
     }
 }
 
@@ -51,17 +47,36 @@ void motion_control::dispatch(const control_command& command) {
 }
 
 awaitable<void> motion_control::task() {
+    auto& pad = roboctrl::get<device::control_pad>(control_pad_key_);
+    auto& robot = roboctrl::get<ctrl::robot>();
     while (true) {
-        auto command = mapper_.update(input_);
-        auto& robot = roboctrl::get<ctrl::robot>();
-        if (command.arm_requested && robot.state() == robot_state::NoForce) {
-            robot.set_state(robot_state::FollowGimbal);
+        if (pad.offline()) {
+            if (robot.state() != robot_state::NoForce) {
+                log_warn("Control pad offline; entering NoForce");
+                robot.set_state(robot_state::NoForce);
+            }
+            mapper_.reset();
+            command_ = {};
+            input_pending_ = false;
+            stop_outputs();
+            co_await roboctrl::wait_for(control_time_);
+            continue;
         }
-        if (robot.state() == robot_state::NoForce ||
-            roboctrl::get<device::control_pad>(control_pad_key_).offline()) {
+
+        if (input_pending_) {
+            input_pending_ = false;
+            command_ = mapper_.update(input_);
+            if (command_.arm_requested && robot.state() == robot_state::NoForce) {
+                robot.set_state(robot_state::FollowGimbal);
+            }
+        }
+
+        if (robot.state() == robot_state::NoForce) {
+            mapper_.reset();
+            command_ = {};
             stop_outputs();
         } else {
-            dispatch(command);
+            dispatch(command_);
         }
         co_await roboctrl::wait_for(control_time_);
     }

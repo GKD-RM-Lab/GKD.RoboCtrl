@@ -182,16 +182,34 @@ inline constexpr std::byte to_byte(std::integral auto v) noexcept{
 }
 
 template<typename T>
-struct function_arg;
+struct function_arg : function_arg<decltype(&std::remove_cvref_t<T>::operator())> {};
 
 template<typename Ret, typename Arg>
-struct function_arg<Ret(*)(Arg)> { using type = Arg; };
+struct function_arg<Ret(Arg)> { using type = Arg; };
+
+template<typename Ret, typename Arg>
+struct function_arg<Ret(*)(Arg)> : function_arg<Ret(Arg)> {};
+
+template<typename Ret, typename Arg>
+struct function_arg<Ret(Arg) noexcept> : function_arg<Ret(Arg)> {};
+
+template<typename Ret, typename Arg>
+struct function_arg<Ret(*)(Arg) noexcept> : function_arg<Ret(Arg)> {};
+
+template<typename Ret, typename Class, typename Arg>
+struct function_arg<Ret(Class::*)(Arg)> { using type = Arg; };
 
 template<typename Ret, typename Class, typename Arg>
 struct function_arg<Ret(Class::*)(Arg) const> { using type = Arg; };
 
+template<typename Ret, typename Class, typename Arg>
+struct function_arg<Ret(Class::*)(Arg) noexcept> : function_arg<Ret(Class::*)(Arg)> {};
+
+template<typename Ret, typename Class, typename Arg>
+struct function_arg<Ret(Class::*)(Arg) const noexcept> : function_arg<Ret(Class::*)(Arg) const> {};
+
 template<typename Fn>
-using function_arg_t = typename function_arg<decltype(&Fn::operator())>::type;
+using function_arg_t = typename function_arg<std::remove_cvref_t<Fn>>::type;
 
 }
 }

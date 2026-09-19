@@ -13,12 +13,22 @@ ROBOCTRL_REGISTER_GIMBAL("device.standard_imu_2axis_gimbal.v1", roboctrl::device
 ROBOCTRL_REGISTER_GIMBAL("ctrl.standard_imu_2axis_gimbal.v1", roboctrl::device::gkd_sentry_gimbal);
 
 roboctrl::awaitable<void> gkd_sentry_gimbal::task(){
+    std::chrono::steady_clock::time_point last_update_at {};
     while(true){
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsed = now - last_update_at;
+        const bool valid_elapsed = last_update_at != std::chrono::steady_clock::time_point{} &&
+            elapsed > std::chrono::steady_clock::duration::zero() &&
+            elapsed <= control_time_ * 5;
+        const fp32 dt = valid_elapsed
+            ? std::chrono::duration_cast<std::chrono::duration<fp32>>(elapsed).count()
+            : 0.0f;
+        last_update_at = now;
+
         auto& imu = roboctrl::get<serial_imu>(imu_key_);
         const bool unavailable = imu.offline() || yaw_motor_->offline() || pitch_motor_->offline();
         const fp32 measured_yaw = imu.angle(axis::yaw);
         const fp32 measured_pitch = imu.angle(axis::pitch);
-        const fp32 dt = std::chrono::duration_cast<std::chrono::duration<fp32>>(control_time_).count();
 
         if (!targets_initialized_ && !unavailable) {
             yaw_ = measured_yaw;
@@ -43,10 +53,12 @@ roboctrl::awaitable<void> gkd_sentry_gimbal::task(){
             co_await yaw_motor_->set(0.0f);
             co_await pitch_motor_->set(0.0f);
         } else {
-            yaw_angle_pid_.set_target(yaw_);
-            yaw_angle_pid_.update(measured_yaw, dt);
-            pitch_angle_pid_.set_target(pitch_);
-            pitch_angle_pid_.update(measured_pitch, dt);
+            if (!valid_elapsed) {
+                yaw_angle_pid_.clean();
+                pitch_angle_pid_.clean();
+            }
+            yaw_angle_pid_.update(yaw_, measured_yaw, dt);
+            pitch_angle_pid_.update(pitch_, measured_pitch, dt);
             co_await yaw_motor_->set(yaw_direction_ * yaw_angle_pid_.state());
             co_await pitch_motor_->set(pitch_direction_ * pitch_angle_pid_.state());
         }

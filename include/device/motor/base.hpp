@@ -11,7 +11,6 @@
  */
 #pragma once
 #include <cstddef>
-#include <cstdint>
 #include <type_traits>
 
 #include "core/async.hpp"
@@ -20,45 +19,8 @@
 #include "device/base.hpp"
 #include "utils/controller.hpp"
 #include "utils/utils.hpp"
-#include "io/base.hpp"
 
 namespace roboctrl::device{
-
-///@cond INTERNAL
-namespace details{
-
-    //通用电机测量数据。
-struct motor_measure{
-    uint16_t ecd = 0;
-    int16_t speed_rpm = 0;
-    int16_t given_current = 0;
-    uint8_t temperate = 0;
-};
-
-struct motor_upload_pkg {
-    uint8_t angle_h     : 1;
-    uint8_t angle_l     : 1;
-    uint8_t speed_h     : 1;
-    uint8_t speed_l     : 1;
-    uint8_t current_h   : 1;
-    uint8_t current_l   : 1;
-    uint8_t temperature : 1;
-    uint8_t unused      : 1;
-} __attribute__((packed));
-
-inline motor_measure parse_motor_upload_pkg(io::byte_span data)
-{
-    motor_upload_pkg pkg = utils::from_bytes<motor_upload_pkg>(data);
-    return {
-        .ecd = utils::make_u16(pkg.angle_h, pkg.angle_l),
-        .speed_rpm = utils::make_i16(pkg.speed_h, pkg.speed_l),
-        .given_current = utils::make_i16(pkg.current_h, pkg.current_l),
-        .temperate = static_cast<uint8_t>(pkg.temperature)
-    };
-}
-
-}
-/// @endcond 
 
 struct motor_base : public device_base {
 protected:
